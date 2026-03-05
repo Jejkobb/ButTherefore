@@ -18,6 +18,28 @@ export interface GraphDocument {
   viewport: Viewport;
 }
 
+function toNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function extractNodeSize(node: StoryFlowNode): { width: number; height: number } | undefined {
+  const width =
+    toNumber(node.width) ??
+    toNumber((node.style as Record<string, unknown> | undefined)?.width);
+  const height =
+    toNumber(node.height) ??
+    toNumber((node.style as Record<string, unknown> | undefined)?.height);
+
+  if (width === null || height === null) return undefined;
+  return { width, height };
+}
+
+function normalizeHandleId(handleId: string | null | undefined): string | null {
+  if (handleId === "out-left") return "in";
+  if (handleId === "in-right") return "out";
+  return handleId ?? null;
+}
+
 export function projectToDocument(project: StoryProjectFile, runtimeAssets: RuntimeStoryAsset[]): GraphDocument {
   const assets = runtimeAssets.reduce<Record<string, RuntimeStoryAsset>>((acc, asset) => {
     acc[asset.id] = asset;
@@ -29,6 +51,7 @@ export function projectToDocument(project: StoryProjectFile, runtimeAssets: Runt
       id: node.id,
       type: "storyNode",
       position: node.position,
+      ...(node.size ? { style: { width: node.size.width, height: node.size.height } } : {}),
       data: node.data
     })),
     edges: project.edges.map((edge: StoryEdgeModel) => ({
@@ -36,8 +59,8 @@ export function projectToDocument(project: StoryProjectFile, runtimeAssets: Runt
       type: "storyEdge",
       source: edge.source,
       target: edge.target,
-      sourceHandle: edge.sourceHandle ?? null,
-      targetHandle: edge.targetHandle ?? null,
+      sourceHandle: normalizeHandleId(edge.sourceHandle),
+      targetHandle: normalizeHandleId(edge.targetHandle),
       data: { relation: edge.relation }
     })),
     assets,
@@ -55,17 +78,21 @@ export function documentToProject(document: GraphDocument, name: string, created
       createdAt: createdAt ?? now,
       updatedAt: now
     },
-    nodes: document.nodes.map((node) => ({
-      id: node.id,
-      position: node.position,
-      data: node.data
-    })),
+    nodes: document.nodes.map((node) => {
+      const size = extractNodeSize(node);
+      return {
+        id: node.id,
+        position: node.position,
+        ...(size ? { size } : {}),
+        data: node.data
+      };
+    }),
     edges: document.edges.map((edge) => ({
       id: edge.id,
       source: edge.source,
       target: edge.target,
-      sourceHandle: edge.sourceHandle,
-      targetHandle: edge.targetHandle,
+      sourceHandle: normalizeHandleId(edge.sourceHandle),
+      targetHandle: normalizeHandleId(edge.targetHandle),
       relation: edge.data?.relation ?? "THEREFORE"
     })),
     assets: Object.values(document.assets).map((asset) => ({

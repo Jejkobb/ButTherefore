@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { Handle, Position, useUpdateNodeInternals, type NodeProps } from "@xyflow/react";
 import type { StoryNodeData } from "@/shared/types";
 import { useGraphStore } from "@/renderer/store/useGraphStore";
@@ -49,15 +49,45 @@ function extractDroppedPaths(event: DragEvent<HTMLDivElement>): string[] {
   return Array.from(paths);
 }
 
-export function StoryNode({ id, data }: NodeProps<StoryNodeData>) {
+const MIN_NODE_WIDTH = 80;
+const MIN_NODE_HEIGHT = 60;
+
+type ResizeCorner = "bl" | "br";
+
+interface ResizeSession {
+  pointerId: number;
+  corner: ResizeCorner;
+  startClientX: number;
+  startClientY: number;
+  startNodeX: number;
+  startWidth: number;
+  startHeight: number;
+}
+
+interface NodeRectSnapshot {
+  x: number;
+  width: number;
+  height: number;
+}
+
+function readNodeSize(node: { width?: number; height?: number; style?: Record<string, unknown> }): { width: number; height: number } {
+  const styleWidth = typeof node.style?.width === "number" ? node.style.width : null;
+  const styleHeight = typeof node.style?.height === "number" ? node.style.height : null;
+  const width = styleWidth ?? (typeof node.width === "number" ? node.width : 320);
+  const height = styleHeight ?? (typeof node.height === "number" ? node.height : 240);
+  return { width, height };
+}
+
+export const StoryNode = memo(function StoryNode({ id, data }: NodeProps<StoryNodeData>) {
   const [isDragOver, setIsDragOver] = useState(false);
+  const [editingBeatIndex, setEditingBeatIndex] = useState<number | null>(null);
   const beatRefs = useRef<Map<number, HTMLTextAreaElement>>(new Map());
+  const pendingInternalsFrame = useRef<number | null>(null);
+  const resizeSessionRef = useRef<ResizeSession | null>(null);
   const updateNodeInternals = useUpdateNodeInternals();
 
   const assets = useGraphStore((state) => state.doc.assets);
-  const updateNodeTitle = useGraphStore((state) => state.updateNodeTitle);
   const updateBeatLine = useGraphStore((state) => state.updateBeatLine);
-  const addBeatLine = useGraphStore((state) => state.addBeatLine);
   const removeBeatLine = useGraphStore((state) => state.removeBeatLine);
   const attachImagesToNode = useGraphStore((state) => state.attachImagesToNode);
 
@@ -71,6 +101,15 @@ export function StoryNode({ id, data }: NodeProps<StoryNodeData>) {
     await attachImagesToNode(id, paths);
   };
 
+  const scheduleNodeInternalsUpdate = useCallback(() => {
+    if (pendingInternalsFrame.current !== null) return;
+
+    pendingInternalsFrame.current = requestAnimationFrame(() => {
+      pendingInternalsFrame.current = null;
+      updateNodeInternals(id);
+    });
+  }, [id, updateNodeInternals]);
+
   const resizeBeatField = useCallback(
     (element: HTMLTextAreaElement | null) => {
       if (!element) return;
@@ -78,14 +117,168 @@ export function StoryNode({ id, data }: NodeProps<StoryNodeData>) {
       element.style.height = "0px";
       element.style.height = `${Math.max(34, element.scrollHeight)}px`;
 
-      requestAnimationFrame(() => updateNodeInternals(id));
+      scheduleNodeInternalsUpdate();
     },
-    [id, updateNodeInternals]
+    [scheduleNodeInternalsUpdate]
   );
 
   useEffect(() => {
     beatRefs.current.forEach((element) => resizeBeatField(element));
   }, [data.beats, resizeBeatField]);
+
+  useEffect(() => {
+    if (editingBeatIndex === null) return;
+    const textarea = beatRefs.current.get(editingBeatIndex);
+    if (!textarea) return;
+    textarea.focus();
+    const length = textarea.value.length;
+    textarea.setSelectionRange(length, length);
+  }, [editingBeatIndex, data.beats]);
+
+  useEffect(() => {
+    scheduleNodeInternalsUpdate();
+  }, [editingBeatIndex, scheduleNodeInternalsUpdate]);
+
+  useEffect(() => {
+    return () => {
+      if (pendingInternalsFrame.current !== null) {
+        cancelAnimationFrame(pendingInternalsFrame.current);
+      }
+    };
+  }, []);
+
+  const applyLiveResize = useCallback((next: NodeRectSnapshot) => {
+    useGraphStore.setState((state) => ({
+      doc: {
+        ...state.doc,
+        nodes: state.doc.nodes.map((node) => {
+          if (node.id !== id) return node;
+          return {
+            ...node,
+            position: { ...node.position, x: next.x },
+            style: {
+              ...(node.style ?? {}),
+              width: next.width,
+              height: next.height
+            }
+          };
+        })
+      }
+    }));
+  }, [id]);
+
+  const commitResize = useCallback((previous: NodeRectSnapshot, next: NodeRectSnapshot) => {
+    if (previous.x === next.x && previous.width === next.width && previous.height === next.height) {
+      return;
+    }
+
+    useGraphStore.getState().executeCommand({
+      label: "Resize Node",
+      redo: (doc) => ({
+        ...doc,
+        nodes: doc.nodes.map((node) => {
+          if (node.id !== id) return node;
+          return {
+            ...node,
+            position: { ...node.position, x: next.x },
+            style: {
+              ...(node.style ?? {}),
+              width: next.width,
+              height: next.height
+            }
+          };
+        })
+      }),
+      undo: (doc) => ({
+        ...doc,
+        nodes: doc.nodes.map((node) => {
+          if (node.id !== id) return node;
+          return {
+            ...node,
+            position: { ...node.position, x: previous.x },
+            style: {
+              ...(node.style ?? {}),
+              width: previous.width,
+              height: previous.height
+            }
+          };
+        })
+      })
+    });
+  }, [id]);
+
+  const startResize = useCallback((event: ReactPointerEvent<HTMLDivElement>, corner: ResizeCorner) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const node = useGraphStore.getState().doc.nodes.find((candidate) => candidate.id === id);
+    if (!node) return;
+
+    const { width, height } = readNodeSize(node);
+    const start: NodeRectSnapshot = {
+      x: node.position.x,
+      width,
+      height
+    };
+
+    resizeSessionRef.current = {
+      pointerId: event.pointerId,
+      corner,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      startNodeX: node.position.x,
+      startWidth: width,
+      startHeight: height
+    };
+
+    const onPointerMove = (moveEvent: PointerEvent) => {
+      const session = resizeSessionRef.current;
+      if (!session || moveEvent.pointerId !== session.pointerId) return;
+
+      const dx = moveEvent.clientX - session.startClientX;
+      const dy = moveEvent.clientY - session.startClientY;
+
+      let nextWidth = session.startWidth;
+      let nextHeight = Math.max(MIN_NODE_HEIGHT, session.startHeight + dy);
+      let nextX = session.startNodeX;
+
+      if (session.corner === "br") {
+        nextWidth = Math.max(MIN_NODE_WIDTH, session.startWidth + dx);
+      } else {
+        nextWidth = Math.max(MIN_NODE_WIDTH, session.startWidth - dx);
+        nextX = session.startNodeX + (session.startWidth - nextWidth);
+      }
+
+      applyLiveResize({ x: nextX, width: nextWidth, height: nextHeight });
+      scheduleNodeInternalsUpdate();
+    };
+
+    const stopResize = (upEvent: PointerEvent) => {
+      const session = resizeSessionRef.current;
+      if (!session || upEvent.pointerId !== session.pointerId) return;
+
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", stopResize);
+      window.removeEventListener("pointercancel", stopResize);
+
+      const current = useGraphStore.getState().doc.nodes.find((candidate) => candidate.id === id);
+      if (current) {
+        const currentSize = readNodeSize(current);
+        const next: NodeRectSnapshot = {
+          x: current.position.x,
+          width: currentSize.width,
+          height: currentSize.height
+        };
+        commitResize(start, next);
+      }
+
+      resizeSessionRef.current = null;
+    };
+
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", stopResize);
+    window.addEventListener("pointercancel", stopResize);
+  }, [applyLiveResize, commitResize, id, scheduleNodeInternalsUpdate]);
 
   return (
     <div
@@ -102,37 +295,50 @@ export function StoryNode({ id, data }: NodeProps<StoryNodeData>) {
         void importImagePaths(extractDroppedPaths(event));
       }}
     >
-      <input
-        className="story-node__title-floating nodrag"
-        value={data.title}
-        onChange={(event) => updateNodeTitle(id, event.target.value)}
-        placeholder="Beat title"
-        spellCheck={false}
-      />
-
       <div className="story-node">
-        <Handle className="story-handle" type="target" position={Position.Left} id="in" />
+        <div className="story-node__resize-zone story-node__resize-zone--bl nodrag nopan" onPointerDown={(event) => startResize(event, "bl")} />
+        <div className="story-node__resize-zone story-node__resize-zone--br nodrag nopan" onPointerDown={(event) => startResize(event, "br")} />
+        <Handle className="story-handle story-handle--left" type="source" position={Position.Left} id="in" />
 
         <div className="story-node__beats">
           {data.beats.map((line, index) => (
             <div className="story-node__beat-row" key={`${id}-beat-${index}`}>
-              <textarea
-                className="story-node__beat nodrag"
-                value={line}
-                onChange={(event) => updateBeatLine(id, index, event.target.value)}
-                onInput={(event) => resizeBeatField(event.currentTarget)}
-                placeholder={`Beat ${index + 1}`}
-                rows={1}
-                spellCheck={false}
-                ref={(element) => {
-                  if (element) {
-                    beatRefs.current.set(index, element);
-                    resizeBeatField(element);
-                  } else {
-                    beatRefs.current.delete(index);
-                  }
-                }}
-              />
+              {editingBeatIndex === index ? (
+                <textarea
+                  className="story-node__beat nodrag"
+                  value={line}
+                  onChange={(event) => updateBeatLine(id, index, event.target.value)}
+                  onInput={(event) => resizeBeatField(event.currentTarget)}
+                  onBlur={() => setEditingBeatIndex((current) => (current === index ? null : current))}
+                  onKeyDown={(event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+                    if (event.key === "Escape") {
+                      event.preventDefault();
+                      setEditingBeatIndex(null);
+                    }
+                  }}
+                  placeholder={`Beat ${index + 1}`}
+                  rows={1}
+                  spellCheck={false}
+                  ref={(element) => {
+                    if (element) {
+                      beatRefs.current.set(index, element);
+                      resizeBeatField(element);
+                    } else {
+                      beatRefs.current.delete(index);
+                    }
+                  }}
+                />
+              ) : (
+                <div
+                  className={`story-node__beat story-node__beat--display ${line ? "" : "is-empty"}`}
+                  onDoubleClick={(event) => {
+                    event.stopPropagation();
+                    setEditingBeatIndex(index);
+                  }}
+                >
+                  {line || `Beat ${index + 1}`}
+                </div>
+              )}
               <button
                 className="story-node__icon-button nodrag"
                 onClick={() => removeBeatLine(id, index)}
@@ -155,19 +361,18 @@ export function StoryNode({ id, data }: NodeProps<StoryNodeData>) {
                 src={asset.uri}
                 alt={asset.fileName}
                 draggable={false}
+                loading="lazy"
+                decoding="async"
                 onLoad={() => {
                   // Images can change node height dynamically, so we refresh internals after each load.
-                  requestAnimationFrame(() => updateNodeInternals(id));
+                  scheduleNodeInternalsUpdate();
                 }}
               />
             ))}
           </div>
         ) : null}
 
-        <div className="story-node__footer">
-          <button className="story-node__secondary nodrag" onClick={() => addBeatLine(id)} type="button">
-            + Beat
-          </button>
+        <div className="story-node__image-action">
           <button
             className="story-node__secondary nodrag"
             onClick={async () => {
@@ -176,12 +381,14 @@ export function StoryNode({ id, data }: NodeProps<StoryNodeData>) {
             }}
             type="button"
           >
-            + Image
+            Add Image
           </button>
         </div>
 
-        <Handle className="story-handle" type="source" position={Position.Right} id="out" />
+        <Handle className="story-handle story-handle--right" type="source" position={Position.Right} id="out" />
       </div>
     </div>
   );
-}
+});
+
+StoryNode.displayName = "StoryNode";

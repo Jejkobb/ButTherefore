@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 import {
   Background,
   BackgroundVariant,
+  ConnectionMode,
   ConnectionLineType,
   Controls,
   type FinalConnectionState,
@@ -11,6 +12,7 @@ import {
   useReactFlow,
   type OnConnectStartParams,
   type NodeDragHandler,
+  type Viewport,
   type XYPosition
 } from "@xyflow/react";
 import { StoryEdge } from "@/renderer/components/StoryEdge";
@@ -42,6 +44,10 @@ function eventToClientPosition(event: MouseEvent | TouchEvent): { x: number; y: 
   }
 
   return { x: (event as MouseEvent).clientX, y: (event as MouseEvent).clientY };
+}
+
+function isSameViewport(a: Viewport, b: Viewport): boolean {
+  return a.x === b.x && a.y === b.y && a.zoom === b.zoom;
 }
 
 function Editor() {
@@ -107,6 +113,35 @@ function Editor() {
     dragStartPositions.current = {};
   }, [commitNodeMove]);
 
+  useEffect(() => {
+    // Browser/electron can occasionally miss drag-stop if pointer-up occurs outside the window.
+    const forceStopDrag = () => {
+      if (Object.keys(dragStartPositions.current).length === 0) return;
+      commitNodeMove(dragStartPositions.current);
+      dragStartPositions.current = {};
+    };
+
+    window.addEventListener("pointerup", forceStopDrag);
+    window.addEventListener("pointercancel", forceStopDrag);
+    window.addEventListener("mouseup", forceStopDrag);
+    window.addEventListener("touchend", forceStopDrag);
+    window.addEventListener("blur", forceStopDrag);
+
+    return () => {
+      window.removeEventListener("pointerup", forceStopDrag);
+      window.removeEventListener("pointercancel", forceStopDrag);
+      window.removeEventListener("mouseup", forceStopDrag);
+      window.removeEventListener("touchend", forceStopDrag);
+      window.removeEventListener("blur", forceStopDrag);
+    };
+  }, [commitNodeMove]);
+
+  useEffect(() => {
+    const currentViewport = flow.getViewport();
+    if (isSameViewport(currentViewport, doc.viewport)) return;
+    void flow.setViewport(doc.viewport, { duration: 0 });
+  }, [doc.viewport, flow]);
+
   const onConnectEnd = useCallback(
     (event: MouseEvent | TouchEvent, connectionState: FinalConnectionState) => {
       const connectStart = connectStartRef.current;
@@ -116,10 +151,7 @@ function Editor() {
         return;
       }
 
-      const flowPosition =
-        connectionState.to ??
-        connectionState.pointer ??
-        flow.screenToFlowPosition(eventToClientPosition(event));
+      const flowPosition = flow.screenToFlowPosition(eventToClientPosition(event));
 
       createNodeFromConnection(connectStart.nodeId, connectStart.handleId, flowPosition);
     },
@@ -175,7 +207,7 @@ function Editor() {
   return (
     <div className="app-shell">
       <header className="app-toolbar">
-        <div className="app-toolbar__brand">Story Beat Node Editor</div>
+        <div className="app-toolbar__brand">ButTherefore</div>
         <div className="app-toolbar__actions">
           <button onClick={createNodeAtViewportCenter} type="button">+ Node</button>
           <button onClick={() => void newProject()} type="button">New</button>
@@ -204,14 +236,18 @@ function Editor() {
           onConnectEnd={onConnectEnd}
           onNodeDragStart={onNodeDragStart}
           onNodeDragStop={onNodeDragStop}
+          connectionMode={ConnectionMode.Loose}
           connectionLineType={ConnectionLineType.Bezier}
           deleteKeyCode={null}
           snapToGrid={false}
           minZoom={0.25}
           maxZoom={2.2}
+          onlyRenderVisibleElements
           fitView={false}
-          viewport={doc.viewport}
-          onViewportChange={setViewport}
+          defaultViewport={doc.viewport}
+          onMoveEnd={(_event, nextViewport) => {
+            setViewport(nextViewport);
+          }}
           onPaneDoubleClick={(event) => {
             const position = flow.screenToFlowPosition({ x: event.clientX, y: event.clientY });
             createNode(position);

@@ -1,8 +1,9 @@
+import { memo } from "react";
 import { BaseEdge, EdgeLabelRenderer, getBezierPath, type EdgeProps } from "@xyflow/react";
 import { useGraphStore } from "@/renderer/store/useGraphStore";
 import type { RelationType } from "@/shared/types";
 
-export function StoryEdge({
+export const StoryEdge = memo(function StoryEdge({
   id,
   sourceX,
   sourceY,
@@ -44,4 +45,6 @@ export function StoryEdge({
       </EdgeLabelRenderer>
     </>
   );
-}
+});
+
+StoryEdge.displayName = "StoryEdge";

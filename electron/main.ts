@@ -2,7 +2,7 @@ import path from "node:path";
 import { promises as fs } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { pathToFileURL } from "node:url";
-import { app, BrowserWindow, dialog, ipcMain, net, protocol, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, net, protocol, shell } from "electron";
 import { assertStoryProjectFile, type RuntimeStoryAsset, type StoryProjectFile } from "../src/shared/types";
 import type { ProjectLoadResult, ProjectSaveResult } from "../src/shared/ipc";
 
@@ -292,6 +292,8 @@ function registerIpc(): void {
 }
 
 app.whenReady().then(async () => {
+  Menu.setApplicationMenu(null);
+
   protocol.handle(ASSET_SCHEME, async (request) => {
     const url = new URL(request.url);
     const assetId = decodeURIComponent(url.pathname.replace(/^\//, ""));

@@ -1,0 +1,824 @@
+{
+  "schemaVersion": 1,
+  "meta": {
+    "name": "Rabbert & Nestor Fortress War",
+    "createdAt": "2026-03-05T18:10:00.000Z",
+    "updatedAt": "2026-03-05T21:41:12.770Z"
+  },
+  "nodes": [
+    {
+      "id": "n-01",
+      "position": {
+        "x": 120,
+        "y": 120
+      },
+      "data": {
+        "title": "Spawn In",
+        "beats": [
+          "Rabbert & Nestor spawn into the world and decide to build a fortress."
+        ],
+        "imageAssetIds": []
+      }
+    },
+    {
+      "id": "n-02",
+      "position": {
+        "x": 540,
+        "y": 123.29876977693223
+      },
+      "data": {
+        "title": "Slow Start",
+        "beats": [
+          "They start gathering stone but it is extremely slow."
+        ],
+        "imageAssetIds": []
+      }
+    },
+    {
+      "id": "n-03",
+      "position": {
+        "x": 960,
+        "y": 120
+      },
+      "data": {
+        "title": "Monument Trip",
+        "beats": [
+          "They travel to the monument looking for better tools."
+        ],
+        "imageAssetIds": []
+      }
+    },
+    {
+      "id": "n-04",
+      "position": {
+        "x": 1380,
+        "y": 120
+      },
+      "data": {
+        "title": "Stone Axe",
+        "beats": [
+          "They find a stone axe and begin gathering wood quickly."
+        ],
+        "imageAssetIds": []
+      }
+    },
+    {
+      "id": "n-05",
+      "position": {
+        "x": 1800,
+        "y": 120
+      },
+      "data": {
+        "title": "Rival Discovery",
+        "beats": [
+          "Nestor goes back to the monument to find his own tool but Grubb has already discovered it."
+        ],
+        "imageAssetIds": []
+      }
+    },
+    {
+      "id": "n-06",
+      "position": {
+        "x": 2220,
+        "y": 120
+      },
+      "data": {
+        "title": "Ambush Setup",
+        "beats": [
+          "Grubb finds a bow inside the monument therefore he hides and prepares an ambush."
+        ],
+        "imageAssetIds": []
+      }
+    },
+    {
+      "id": "n-07",
+      "position": {
+        "x": 2279.202145988309,
+        "y": 357.0260329000593
+      },
+      "data": {
+        "title": "Nestor Shot",
+        "beats": [
+          "Nestor opens a chest and finds an advanced axe but Grubb reveals himself and shoots him."
+        ],
+        "imageAssetIds": []
+      }
+    },
+    {
+      "id": "n-08",
+      "position": {
+        "x": 1800,
+        "y": 380
+      },
+      "data": {
+        "title": "Loot Taken",
+        "beats": [
+          "Nestor dies and respawns therefore Grubb steals the advanced axe."
+        ],
+        "imageAssetIds": []
+      }
+    },
+    {
+      "id": "n-09",
+      "position": {
+        "x": 1380,
+        "y": 380
+      },
+      "data": {
+        "title": "Hunt Begins",
+        "beats": [
+          "Grubb goes hunting for Rabbert but Rabbert notices arrows landing near him and runs away."
+        ],
+        "imageAssetIds": []
+      }
+    },
+    {
+      "id": "n-10",
+      "position": {
+        "x": 960,
+        "y": 380
+      },
+      "data": {
+        "title": "House Lost",
+        "beats": [
+          "Rabbert abandons the house he was building therefore Grubb takes it over."
+        ],
+        "imageAssetIds": []
+      }
+    },
+    {
+      "id": "n-11",
+      "position": {
+        "x": 540,
+        "y": 380
+      },
+      "data": {
+        "title": "Dangerous Respawn",
+        "beats": [
+          "Nestor respawns somewhere else but he appears next to two hostile grubbs with spears."
+        ],
+        "imageAssetIds": []
+      }
+    },
+    {
+      "id": "n-12",
+      "position": {
+        "x": 126.18529883459942,
+        "y": 360.5604893769733
+      },
+      "data": {
+        "title": "Reunion",
+        "beats": [
+          "He escapes through the forest therefore he reunites with Rabbert."
+        ],
+        "imageAssetIds": []
+      }
+    },
+    {
+      "id": "n-13",
+      "position": {
+        "x": 120,
+        "y": 640
+      },
+      "data": {
+        "title": "Stolen Home",
+        "beats": [
+          "They see Grubb living in their stolen house but decide to move and build somewhere new."
+        ],
+        "imageAssetIds": []
+      }
+    },
+    {
+      "id": "n-14",
+      "position": {
+        "x": 540,
+        "y": 640
+      },
+      "data": {
+        "title": "New Fortress Site",
+        "beats": [
+          "They find a better location therefore they begin building a fortress."
+        ],
+        "imageAssetIds": []
+      }
+    },
+    {
+      "id": "n-15",
+      "position": {
+        "x": 960,
+        "y": 640
+      },
+      "data": {
+        "title": "Monument Control",
+        "beats": [
+          "Meanwhile Grubb realizes the monument constantly spawns loot therefore he starts controlling it."
+        ],
+        "imageAssetIds": []
+      }
+    },
+    {
+      "id": "n-16",
+      "position": {
+        "x": 1380,
+        "y": 640
+      },
+      "data": {
+        "title": "Power Spike",
+        "beats": [
+          "He gathers weapons and even defeats two other grubbs therefore he becomes even stronger."
+        ],
+        "imageAssetIds": []
+      }
+    },
+    {
+      "id": "n-17",
+      "position": {
+        "x": 1800,
+        "y": 640
+      },
+      "data": {
+        "title": "Hidden Bombs",
+        "beats": [
+          "He also finds two rare bombs that can destroy houses but hides them for later."
+        ],
+        "imageAssetIds": []
+      }
+    },
+    {
+      "id": "n-18",
+      "position": {
+        "x": 2220,
+        "y": 640
+      },
+      "data": {
+        "title": "Scout Mission",
+        "beats": [
+          "Back at the fortress Nestor realizes Grubb is becoming too powerful therefore he decides to scout the monument."
+        ],
+        "imageAssetIds": []
+      }
+    },
+    {
+      "id": "n-19",
+      "position": {
+        "x": 2220,
+        "y": 900
+      },
+      "data": {
+        "title": "Trap Triggered",
+        "beats": [
+          "He sneaks inside but triggers a trap and gets killed."
+        ],
+        "imageAssetIds": []
+      }
+    },
+    {
+      "id": "n-20",
+      "position": {
+        "x": 1800,
+        "y": 900
+      },
+      "data": {
+        "title": "More Confidence",
+        "beats": [
+          "Grubb finds the bow Nestor dropped therefore he grows even more confident."
+        ],
+        "imageAssetIds": []
+      }
+    },
+    {
+      "id": "n-21",
+      "position": {
+        "x": 1380,
+        "y": 900
+      },
+      "data": {
+        "title": "Permanent Base Plan",
+        "beats": [
+          "Grubb decides the monument will become his permanent base therefore he plans to move all his loot there."
+        ],
+        "imageAssetIds": []
+      }
+    },
+    {
+      "id": "n-22",
+      "position": {
+        "x": 960,
+        "y": 900
+      },
+      "data": {
+        "title": "Counter Ambush",
+        "beats": [
+          "Nestor overhears this plan therefore he and Rabbert prepare an ambush."
+        ],
+        "imageAssetIds": []
+      }
+    },
+    {
+      "id": "n-23",
+      "position": {
+        "x": 540,
+        "y": 900
+      },
+      "data": {
+        "title": "One Chance",
+        "beats": [
+          "They hide gold near the monument to distract Grubb’s guards but they only have one chance."
+        ],
+        "imageAssetIds": []
+      }
+    },
+    {
+      "id": "n-24",
+      "position": {
+        "x": 120,
+        "y": 900
+      },
+      "data": {
+        "title": "Guards Dispatched",
+        "beats": [
+          "Grubb prepares to move his loot therefore he sends his guards to check the fortress first."
+        ],
+        "imageAssetIds": []
+      }
+    },
+    {
+      "id": "n-25",
+      "position": {
+        "x": 120,
+        "y": 1160
+      },
+      "data": {
+        "title": "Fake Cutouts",
+        "beats": [
+          "Rabbert and Nestor trick them with fake cutouts therefore the guards report everything is safe."
+        ],
+        "imageAssetIds": []
+      }
+    },
+    {
+      "id": "n-26",
+      "position": {
+        "x": 540,
+        "y": 1160
+      },
+      "data": {
+        "title": "Gold Drop",
+        "beats": [
+          "Grubb begins the loot transfer but Nestor shoots the tree and the gold falls."
+        ],
+        "imageAssetIds": []
+      }
+    },
+    {
+      "id": "n-27",
+      "position": {
+        "x": 960,
+        "y": 1160
+      },
+      "data": {
+        "title": "Grubb Exposed",
+        "beats": [
+          "The guards run to collect it therefore Grubb is suddenly alone."
+        ],
+        "imageAssetIds": []
+      }
+    },
+    {
+      "id": "n-28",
+      "position": {
+        "x": 1380,
+        "y": 1160
+      },
+      "data": {
+        "title": "Door Block",
+        "beats": [
+          "Rabbert blocks the monument door but Grubb turns and sees Nestor aiming."
+        ],
+        "imageAssetIds": []
+      }
+    },
+    {
+      "id": "n-29",
+      "position": {
+        "x": 1800,
+        "y": 1160
+      },
+      "data": {
+        "title": "Grubb Down",
+        "beats": [
+          "Nestor fires and kills Grubb therefore all the loot drops."
+        ],
+        "imageAssetIds": []
+      }
+    },
+    {
+      "id": "n-30",
+      "position": {
+        "x": 2225.3572342356683,
+        "y": 1170.7144684713369
+      },
+      "data": {
+        "title": "Guards Return",
+        "beats": [
+          "Rabbert and Nestor grab as much as they can but the guards realize the trick."
+        ],
+        "imageAssetIds": []
+      }
+    },
+    {
+      "id": "n-31",
+      "position": {
+        "x": 2201.2496801751604,
+        "y": 1413.3034572054144
+      },
+      "data": {
+        "title": "Chase",
+        "beats": [
+          "A chase begins therefore they sprint back to their fortress."
+        ],
+        "imageAssetIds": []
+      }
+    },
+    {
+      "id": "n-32",
+      "position": {
+        "x": 1800,
+        "y": 1420
+      },
+      "data": {
+        "title": "Gate Defense",
+        "beats": [
+          "They slam the gates shut just in time but the guards attack the doors."
+        ],
+        "imageAssetIds": []
+      }
+    },
+    {
+      "id": "n-33",
+      "position": {
+        "x": 1380,
+        "y": 1420
+      },
+      "data": {
+        "title": "Tower Fire",
+        "beats": [
+          "Nestor fires arrows from the towers therefore the guards retreat."
+        ],
+        "imageAssetIds": []
+      }
+    },
+    {
+      "id": "n-34",
+      "position": {
+        "x": 960,
+        "y": 1420
+      },
+      "data": {
+        "title": "Bomb Threat",
+        "beats": [
+          "Grubb respawns and realizes his loot is gone but he still has the hidden bombs."
+        ],
+        "imageAssetIds": []
+      }
+    },
+    {
+      "id": "n-35",
+      "position": {
+        "x": 540,
+        "y": 1420
+      },
+      "data": {
+        "title": "Revenge Run",
+        "beats": [
+          "Therefore he runs to their fortress and prepares revenge."
+        ],
+        "imageAssetIds": []
+      }
+    },
+    {
+      "id": "n-36",
+      "position": {
+        "x": 120,
+        "y": 1420
+      },
+      "data": {
+        "title": "Raid Base",
+        "beats": [
+          "Rabbert and Nestor laugh from the walls but Grubb begins building a raid base outside."
+        ],
+        "imageAssetIds": []
+      }
+    },
+    {
+      "id": "n-37",
+      "position": {
+        "x": 121.30500798278541,
+        "y": 1642.8207245492968
+      },
+      "data": {
+        "title": "Cliffhanger",
+        "beats": [
+          "Therefore the next battle is about to begin."
+        ],
+        "imageAssetIds": []
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-01",
+      "source": "n-01",
+      "target": "n-02",
+      "sourceHandle": "out",
+      "targetHandle": "in",
+      "relation": "THEREFORE"
+    },
+    {
+      "id": "e-02",
+      "source": "n-02",
+      "target": "n-03",
+      "sourceHandle": "out",
+      "targetHandle": "in",
+      "relation": "THEREFORE"
+    },
+    {
+      "id": "e-03",
+      "source": "n-03",
+      "target": "n-04",
+      "sourceHandle": "out",
+      "targetHandle": "in",
+      "relation": "THEREFORE"
+    },
+    {
+      "id": "e-04",
+      "source": "n-04",
+      "target": "n-05",
+      "sourceHandle": "out",
+      "targetHandle": "in",
+      "relation": "BUT"
+    },
+    {
+      "id": "e-05",
+      "source": "n-05",
+      "target": "n-06",
+      "sourceHandle": "out",
+      "targetHandle": "in",
+      "relation": "THEREFORE"
+    },
+    {
+      "id": "e-13",
+      "source": "n-13",
+      "target": "n-14",
+      "sourceHandle": "out",
+      "targetHandle": "in",
+      "relation": "THEREFORE"
+    },
+    {
+      "id": "e-14",
+      "source": "n-14",
+      "target": "n-15",
+      "sourceHandle": "out",
+      "targetHandle": "in",
+      "relation": "THEREFORE"
+    },
+    {
+      "id": "e-15",
+      "source": "n-15",
+      "target": "n-16",
+      "sourceHandle": "out",
+      "targetHandle": "in",
+      "relation": "THEREFORE"
+    },
+    {
+      "id": "e-16",
+      "source": "n-16",
+      "target": "n-17",
+      "sourceHandle": "out",
+      "targetHandle": "in",
+      "relation": "BUT"
+    },
+    {
+      "id": "e-17",
+      "source": "n-17",
+      "target": "n-18",
+      "sourceHandle": "out",
+      "targetHandle": "in",
+      "relation": "THEREFORE"
+    },
+    {
+      "id": "e-25",
+      "source": "n-25",
+      "target": "n-26",
+      "sourceHandle": "out",
+      "targetHandle": "in",
+      "relation": "BUT"
+    },
+    {
+      "id": "e-26",
+      "source": "n-26",
+      "target": "n-27",
+      "sourceHandle": "out",
+      "targetHandle": "in",
+      "relation": "THEREFORE"
+    },
+    {
+      "id": "e-27",
+      "source": "n-27",
+      "target": "n-28",
+      "sourceHandle": "out",
+      "targetHandle": "in",
+      "relation": "BUT"
+    },
+    {
+      "id": "e-28",
+      "source": "n-28",
+      "target": "n-29",
+      "sourceHandle": "out",
+      "targetHandle": "in",
+      "relation": "THEREFORE"
+    },
+    {
+      "id": "e-29",
+      "source": "n-29",
+      "target": "n-30",
+      "sourceHandle": "out",
+      "targetHandle": "in",
+      "relation": "BUT"
+    },
+    {
+      "id": "b832c3bd-d7c9-41e3-8f5e-f0b3936f5279",
+      "source": "n-06",
+      "target": "n-07",
+      "sourceHandle": "out",
+      "targetHandle": "out",
+      "relation": "THEREFORE"
+    },
+    {
+      "id": "3092795d-7f9e-4702-b09b-b6bdcc80d09e",
+      "source": "n-07",
+      "target": "n-08",
+      "sourceHandle": "in",
+      "targetHandle": "out",
+      "relation": "THEREFORE"
+    },
+    {
+      "id": "3ffa77a3-3192-4ef7-bf7f-ab059f90b1a3",
+      "source": "n-12",
+      "target": "n-13",
+      "sourceHandle": "in",
+      "targetHandle": "in",
+      "relation": "THEREFORE"
+    },
+    {
+      "id": "1a66de17-93aa-45e3-a6ab-3e7c51bdb570",
+      "source": "n-11",
+      "target": "n-12",
+      "sourceHandle": "in",
+      "targetHandle": "out",
+      "relation": "THEREFORE"
+    },
+    {
+      "id": "817c0157-6af8-4d0e-8b00-54cf4ec1999c",
+      "source": "n-11",
+      "target": "n-10",
+      "sourceHandle": "out",
+      "targetHandle": "in",
+      "relation": "THEREFORE"
+    },
+    {
+      "id": "2c99c2a8-f86b-4a35-b93c-6255453f1212",
+      "source": "n-10",
+      "target": "n-09",
+      "sourceHandle": "out",
+      "targetHandle": "in",
+      "relation": "THEREFORE"
+    },
+    {
+      "id": "5858f91f-7ea1-4f82-98cf-0d8af4b30ab6",
+      "source": "n-09",
+      "target": "n-08",
+      "sourceHandle": "out",
+      "targetHandle": "in",
+      "relation": "THEREFORE"
+    },
+    {
+      "id": "28e28ce7-fcad-41d0-af50-de89d949ca69",
+      "source": "n-18",
+      "target": "n-19",
+      "sourceHandle": "out",
+      "targetHandle": "out",
+      "relation": "THEREFORE"
+    },
+    {
+      "id": "757952a7-41f6-417a-ad09-6a37358517af",
+      "source": "n-19",
+      "target": "n-20",
+      "sourceHandle": "in",
+      "targetHandle": "out",
+      "relation": "THEREFORE"
+    },
+    {
+      "id": "0bcbe746-caf7-4b4a-81d5-f47670b78a4d",
+      "source": "n-20",
+      "target": "n-21",
+      "sourceHandle": "in",
+      "targetHandle": "out",
+      "relation": "THEREFORE"
+    },
+    {
+      "id": "617d15ca-e28c-47f6-a9fe-a3a730920c41",
+      "source": "n-21",
+      "target": "n-22",
+      "sourceHandle": "in",
+      "targetHandle": "out",
+      "relation": "THEREFORE"
+    },
+    {
+      "id": "abb3698c-561b-4bff-8bff-2c61027e9d35",
+      "source": "n-22",
+      "target": "n-23",
+      "sourceHandle": "in",
+      "targetHandle": "out",
+      "relation": "THEREFORE"
+    },
+    {
+      "id": "e0ab1d30-9a3c-433e-ad26-a431cca8c6ea",
+      "source": "n-23",
+      "target": "n-24",
+      "sourceHandle": "in",
+      "targetHandle": "out",
+      "relation": "THEREFORE"
+    },
+    {
+      "id": "d723b8bc-c361-4664-8483-78733ecca733",
+      "source": "n-24",
+      "target": "n-25",
+      "sourceHandle": "in",
+      "targetHandle": "in",
+      "relation": "THEREFORE"
+    },
+    {
+      "id": "277db248-4502-4197-a675-219de1cc05ee",
+      "source": "n-36",
+      "target": "n-37",
+      "sourceHandle": "in",
+      "targetHandle": "in",
+      "relation": "THEREFORE"
+    },
+    {
+      "id": "2b8ae8a5-8599-48d7-9174-de518ee3083b",
+      "source": "n-30",
+      "target": "n-31",
+      "sourceHandle": "out",
+      "targetHandle": "out",
+      "relation": "THEREFORE"
+    },
+    {
+      "id": "b6c8c796-e415-4dda-a98c-6386dc3192b3",
+      "source": "n-31",
+      "target": "n-32",
+      "sourceHandle": "in",
+      "targetHandle": "out",
+      "relation": "THEREFORE"
+    },
+    {
+      "id": "4eb7b873-08d0-4af5-b1a5-f2fdead7be66",
+      "source": "n-32",
+      "target": "n-33",
+      "sourceHandle": "in",
+      "targetHandle": "out",
+      "relation": "THEREFORE"
+    },
+    {
+      "id": "52945560-4fde-44b9-8ebd-aff95f53bd76",
+      "source": "n-33",
+      "target": "n-34",
+      "sourceHandle": "in",
+      "targetHandle": "out",
+      "relation": "THEREFORE"
+    },
+    {
+      "id": "d76af5ba-3e21-4167-af09-bbcb5546b1c4",
+      "source": "n-34",
+      "target": "n-35",
+      "sourceHandle": "in",
+      "targetHandle": "out",
+      "relation": "THEREFORE"
+    },
+    {
+      "id": "1a94ed65-2708-4388-9b22-d37f636dbc3b",
+      "source": "n-35",
+      "target": "n-36",
+      "sourceHandle": "in",
+      "targetHandle": "out",
+      "relation": "THEREFORE"
+    }
+  ],
+  "assets": [],
+  "viewport": {
+    "x": -74.42568417105895,
+    "y": 171.16661100310102,
+    "zoom": 1.667288223161438
+  }
+}

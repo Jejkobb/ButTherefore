@@ -23,6 +23,7 @@ export interface StoryNodeData {
 export interface StoryNodeModel {
   id: string;
   position: { x: number; y: number };
+  size?: { width: number; height: number };
   data: StoryNodeData;
 }
 

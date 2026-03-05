@@ -16,6 +16,7 @@ interface GraphCommand {
   label: string;
   redo: (doc: GraphDocument) => GraphDocument;
   undo: (doc: GraphDocument) => GraphDocument;
+  mergeKey?: string;
 }
 
 interface GraphHistory {
@@ -64,6 +65,9 @@ function createStarterNode(position: XYPosition = { x: 120, y: 120 }): StoryFlow
     id: crypto.randomUUID(),
     type: "storyNode",
     position,
+    style: {
+      width: 320
+    },
     data: {
       title: "Story Beat",
       beats: [""],
@@ -110,14 +114,36 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
   dirty: false,
 
   executeCommand: (command) => {
-    set((state) => ({
-      doc: command.redo(state.doc),
-      history: {
-        past: [...state.history.past, command],
-        future: []
-      },
-      dirty: true
-    }));
+    set((state) => {
+      const past = state.history.past;
+      const lastCommand = past[past.length - 1];
+
+      if (command.mergeKey && lastCommand?.mergeKey === command.mergeKey) {
+        const mergedCommand: GraphCommand = {
+          ...command,
+          undo: lastCommand.undo,
+          mergeKey: command.mergeKey
+        };
+
+        return {
+          doc: command.redo(state.doc),
+          history: {
+            past: [...past.slice(0, -1), mergedCommand],
+            future: []
+          },
+          dirty: true
+        };
+      }
+
+      return {
+        doc: command.redo(state.doc),
+        history: {
+          past: [...past, command],
+          future: []
+        },
+        dirty: true
+      };
+    });
   },
 
   undo: () => {
@@ -174,12 +200,22 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
   },
 
   setViewport: (viewport) => {
-    set((state) => ({
-      doc: {
-        ...state.doc,
-        viewport
+    set((state) => {
+      if (
+        state.doc.viewport.x === viewport.x &&
+        state.doc.viewport.y === viewport.y &&
+        state.doc.viewport.zoom === viewport.zoom
+      ) {
+        return state;
       }
-    }));
+
+      return {
+        doc: {
+          ...state.doc,
+          viewport
+        }
+      };
+    });
   },
 
   createNode: (position) => {
@@ -197,6 +233,8 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
     if (!sourceNodeExists) return;
 
     const node = createStarterNode(position);
+    const sourceSide = sourceHandleId === "in" || sourceHandleId === "out-left" ? "left" : "right";
+    const targetHandleId = sourceSide === "left" ? "out" : "in";
 
     const edge: StoryFlowEdge = {
       id: crypto.randomUUID(),
@@ -204,7 +242,7 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
       source: sourceNodeId,
       target: node.id,
       sourceHandle: sourceHandleId,
-      targetHandle: "in",
+      targetHandle: targetHandleId,
       data: { relation: "THEREFORE" }
     };
 
@@ -246,8 +284,9 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
 
   commitNodeMove: (previousPositions) => {
     const doc = get().doc;
+    const nodeById = new Map(doc.nodes.map((node) => [node.id, node]));
     const movedIds = Object.keys(previousPositions).filter((id) => {
-      const current = doc.nodes.find((node) => node.id === id);
+      const current = nodeById.get(id);
       if (!current) return false;
       const previous = previousPositions[id];
       return current.position.x !== previous.x || current.position.y !== previous.y;
@@ -256,7 +295,7 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
     if (movedIds.length === 0) return;
 
     const nextPositions = movedIds.reduce<Record<string, XYPosition>>((acc, id) => {
-      const current = doc.nodes.find((node) => node.id === id);
+      const current = nodeById.get(id);
       if (current) {
         acc[id] = { ...current.position };
       }
@@ -315,6 +354,7 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
 
     get().executeCommand({
       label: "Edit Node Title",
+      mergeKey: `title:${nodeId}`,
       redo: (doc) =>
         replaceNode(doc, nodeId, (node) => ({
           ...node,
@@ -336,6 +376,7 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
 
     get().executeCommand({
       label: "Edit Beat",
+      mergeKey: `beat:${nodeId}:${index}`,
       redo: (doc) =>
         replaceNode(doc, nodeId, (node) => {
           const beats = [...node.data.beats];

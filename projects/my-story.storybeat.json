@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "meta": {
+    "name": "Untitled Project",
+    "createdAt": "2026-03-05T17:29:26.461Z",
+    "updatedAt": "2026-03-05T17:35:39.450Z"
+  },
+  "nodes": [
+    {
+      "id": "91b2da78-8559-452e-be7b-e01a21a658d8",
+      "position": {
+        "x": 107.9083047307609,
+        "y": 238.47993276597563
+      },
+      "data": {
+        "title": "Beginning",
+        "beats": [
+          "Rabbert & Nestor spawn into the world",
+          "Then this happened"
+        ],
+        "imageAssetIds": [
+          "07e36f77-73c5-407f-94f8-977c3850874f",
+          "a3d4b47b-9392-4f58-93d6-075d835743f4"
+        ]
+      }
+    },
+    {
+      "id": "18c20da5-eb06-4034-820d-4b2110966690",
+      "position": {
+        "x": 581.6677967693847,
+        "y": 225.886593726274
+      },
+      "data": {
+        "title": "Story Beat",
+        "beats": [
+          ""
+        ],
+        "imageAssetIds": []
+      }
+    },
+    {
+      "id": "40bc2440-6afb-45ab-a2af-1c9f3a05e94f",
+      "position": {
+        "x": 1154.0570060093762,
+        "y": 212.49706987166735
+      },
+      "data": {
+        "title": "Story Beat",
+        "beats": [
+          ""
+        ],
+        "imageAssetIds": []
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "51e7f8e4-9aaf-480f-bce9-f43aba212145",
+      "source": "91b2da78-8559-452e-be7b-e01a21a658d8",
+      "target": "18c20da5-eb06-4034-820d-4b2110966690",
+      "sourceHandle": "out",
+      "targetHandle": "in",
+      "relation": "THEREFORE"
+    },
+    {
+      "id": "82d2a8bf-9538-4764-a398-8ee7bbb50564",
+      "source": "18c20da5-eb06-4034-820d-4b2110966690",
+      "target": "40bc2440-6afb-45ab-a2af-1c9f3a05e94f",
+      "sourceHandle": "out",
+      "targetHandle": "in",
+      "relation": "BUT"
+    }
+  ],
+  "assets": [
+    {
+      "id": "07e36f77-73c5-407f-94f8-977c3850874f",
+      "fileName": "Screenshot 2026-01-08 114717.png",
+      "relativePath": "a7f36692-c1e8-4943-82b9-c5522c687a87.png",
+      "mimeType": "image/png"
+    },
+    {
+      "id": "a3d4b47b-9392-4f58-93d6-075d835743f4",
+      "fileName": "image.jpg",
+      "relativePath": "5e0f2124-dc26-4ee9-9094-76fe2d52be9c.jpg",
+      "mimeType": "image/jpeg"
+    }
+  ],
+  "viewport": {
+    "x": -5.6438232627713205,
+    "y": 34.16795709783088,
+    "zoom": 1.1000000000000005
+  }
+}

@@ -2,7 +2,7 @@ import path from "node:path";
 import { promises as fs } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { pathToFileURL } from "node:url";
-import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, net, protocol, shell } from "electron";
 import { assertStoryProjectFile, type RuntimeStoryAsset, type StoryProjectFile } from "../src/shared/types";
 import type { ProjectLoadResult, ProjectSaveResult } from "../src/shared/ipc";
 
@@ -10,10 +10,26 @@ const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
 const PROJECT_EXTENSION = ".storybeat.json";
 const AUTOSAVE_ROOT = "autosave";
 const SESSION_ASSETS_ROOT = "session-assets";
+const ASSET_SCHEME = "story-asset";
+const ASSET_HOST = "asset";
 
 let mainWindow: BrowserWindow | null = null;
 let currentProjectPath: string | null = null;
 let workspaceAssetsDir = "";
+const assetPathIndex = new Map<string, string>();
+
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: ASSET_SCHEME,
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+      stream: true
+    }
+  }
+]);
 
 function ensureProjectExtension(filePath: string): string {
   if (filePath.endsWith(PROJECT_EXTENSION)) return filePath;
@@ -51,15 +67,24 @@ async function initializeWorkspace(): Promise<void> {
   const userData = app.getPath("userData");
   workspaceAssetsDir = path.join(userData, SESSION_ASSETS_ROOT);
   await resetDir(workspaceAssetsDir);
+  assetPathIndex.clear();
+}
+
+function buildAssetUri(assetId: string): string {
+  return `${ASSET_SCHEME}://${ASSET_HOST}/${encodeURIComponent(assetId)}`;
 }
 
 function runtimeAssetsForProject(project: StoryProjectFile, assetsDir: string): RuntimeStoryAsset[] {
+  assetPathIndex.clear();
+
   return project.assets.map((asset) => {
     const absolutePath = path.join(assetsDir, asset.relativePath);
+    assetPathIndex.set(asset.id, absolutePath);
+
     return {
       ...asset,
       absolutePath,
-      uri: pathToFileURL(absolutePath).toString()
+      uri: buildAssetUri(asset.id)
     };
   });
 }
@@ -96,6 +121,9 @@ async function writeProjectToPath(project: StoryProjectFile, filePath: string): 
 
   currentProjectPath = finalPath;
   workspaceAssetsDir = assetsDir;
+  for (const asset of project.assets) {
+    assetPathIndex.set(asset.id, path.join(assetsDir, asset.relativePath));
+  }
 
   return {
     projectPath: finalPath,
@@ -115,7 +143,8 @@ async function createWindow(): Promise<void> {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
-      webSecurity: true
+      webSecurity: true,
+      spellcheck: false
     }
   });
 
@@ -137,6 +166,7 @@ function registerIpc(): void {
     const userData = app.getPath("userData");
     workspaceAssetsDir = path.join(userData, SESSION_ASSETS_ROOT);
     await resetDir(workspaceAssetsDir);
+    assetPathIndex.clear();
   });
 
   ipcMain.handle("project:importAsset", async (_event, sourcePath: string): Promise<RuntimeStoryAsset> => {
@@ -148,14 +178,33 @@ function registerIpc(): void {
 
     await fs.copyFile(sourcePath, targetPath);
 
+    const assetId = randomUUID();
+    assetPathIndex.set(assetId, targetPath);
+
     return {
-      id: randomUUID(),
+      id: assetId,
       fileName: path.basename(sourcePath),
       relativePath,
       mimeType: detectMimeType(sourcePath),
       absolutePath: targetPath,
-      uri: pathToFileURL(targetPath).toString()
+      uri: buildAssetUri(assetId)
     };
+  });
+
+  ipcMain.handle("project:pickImages", async (): Promise<string[]> => {
+    const selected = await dialog.showOpenDialog({
+      title: "Attach Images",
+      properties: ["openFile", "multiSelections"],
+      filters: [
+        {
+          name: "Images",
+          extensions: ["png", "jpg", "jpeg", "webp", "gif", "bmp"]
+        }
+      ]
+    });
+
+    if (selected.canceled) return [];
+    return selected.filePaths;
   });
 
   ipcMain.handle("project:open", async (): Promise<ProjectLoadResult | null> => {
@@ -243,6 +292,18 @@ function registerIpc(): void {
 }
 
 app.whenReady().then(async () => {
+  protocol.handle(ASSET_SCHEME, async (request) => {
+    const url = new URL(request.url);
+    const assetId = decodeURIComponent(url.pathname.replace(/^\//, ""));
+    const assetPath = assetPathIndex.get(assetId);
+
+    if (!assetPath) {
+      return new Response("Asset not found", { status: 404 });
+    }
+
+    return net.fetch(pathToFileURL(assetPath).toString());
+  });
+
   await initializeWorkspace();
   registerIpc();
   await createWindow();

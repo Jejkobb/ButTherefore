@@ -40,6 +40,7 @@ interface GraphStore {
   applyEdgeChangesLive: (changes: EdgeChange<StoryFlowEdge>[]) => void;
   setViewport: (viewport: GraphDocument["viewport"]) => void;
   createNode: (position: XYPosition) => void;
+  createNodeFromConnection: (sourceNodeId: string, sourceHandleId: string | null, position: XYPosition) => void;
   connectNodes: (connection: Connection) => void;
   commitNodeMove: (previousPositions: Record<string, XYPosition>) => void;
   deleteSelection: () => void;
@@ -58,12 +59,29 @@ interface GraphStore {
 
 const empty = createEmptyProject();
 
-const initialDoc: GraphDocument = {
-  nodes: [],
-  edges: [],
-  assets: {},
-  viewport: empty.viewport
-};
+function createStarterNode(position: XYPosition = { x: 120, y: 120 }): StoryFlowNode {
+  return {
+    id: crypto.randomUUID(),
+    type: "storyNode",
+    position,
+    data: {
+      title: "Story Beat",
+      beats: [""],
+      imageAssetIds: []
+    }
+  };
+}
+
+function createInitialDocument(viewport: GraphDocument["viewport"] = empty.viewport): GraphDocument {
+  return {
+    nodes: [createStarterNode()],
+    edges: [],
+    assets: {},
+    viewport
+  };
+}
+
+const initialDoc: GraphDocument = createInitialDocument();
 
 function replaceNode(doc: GraphDocument, nodeId: string, updater: (node: StoryFlowNode) => StoryFlowNode): GraphDocument {
   return {
@@ -165,21 +183,43 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
   },
 
   createNode: (position) => {
-    const node: StoryFlowNode = {
-      id: crypto.randomUUID(),
-      type: "storyNode",
-      position,
-      data: {
-        title: "Story Beat",
-        beats: [""],
-        imageAssetIds: []
-      }
-    };
+    const node = createStarterNode(position);
 
     get().executeCommand({
       label: "Create Node",
       redo: (doc) => ({ ...doc, nodes: [...doc.nodes, node] }),
       undo: (doc) => ({ ...doc, nodes: doc.nodes.filter((candidate) => candidate.id !== node.id) })
+    });
+  },
+
+  createNodeFromConnection: (sourceNodeId, sourceHandleId, position) => {
+    const sourceNodeExists = get().doc.nodes.some((node) => node.id === sourceNodeId);
+    if (!sourceNodeExists) return;
+
+    const node = createStarterNode(position);
+
+    const edge: StoryFlowEdge = {
+      id: crypto.randomUUID(),
+      type: "storyEdge",
+      source: sourceNodeId,
+      target: node.id,
+      sourceHandle: sourceHandleId,
+      targetHandle: "in",
+      data: { relation: "THEREFORE" }
+    };
+
+    get().executeCommand({
+      label: "Create Connected Node",
+      redo: (doc) => ({
+        ...doc,
+        nodes: [...doc.nodes, node],
+        edges: addEdge(edge, doc.edges)
+      }),
+      undo: (doc) => ({
+        ...doc,
+        nodes: doc.nodes.filter((candidate) => candidate.id !== node.id),
+        edges: doc.edges.filter((candidate) => candidate.id !== edge.id)
+      })
     });
   },
 
@@ -451,12 +491,7 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
     const fresh = createEmptyProject();
 
     set({
-      doc: {
-        nodes: [],
-        edges: [],
-        assets: {},
-        viewport: fresh.viewport
-      },
+      doc: createInitialDocument(fresh.viewport),
       history: { past: [], future: [] },
       projectPath: null,
       projectName: fresh.meta.name,

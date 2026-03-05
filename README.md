@@ -8,7 +8,9 @@ Chromium-based Story Beat Node Editor (Electron + React + TypeScript).
   - Editable title.
   - Editable beat lines.
   - Image attachments via drag/drop or file picker.
+  - Node creation via toolbar button, `N`, or double-clicking the canvas.
 - Custom curved edges with midpoint relation toggle (`BUT` / `THEREFORE`).
+- Dragging a connection from an output and releasing on empty canvas auto-creates a connected node.
 - Command-based undo/redo for:
   - Node and edge creation.
   - Node movement.

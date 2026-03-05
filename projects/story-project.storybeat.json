@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "meta": {
+    "name": "Untitled Project",
+    "createdAt": "2026-03-05T17:29:26.461Z",
+    "updatedAt": "2026-03-05T17:32:25.880Z"
+  },
+  "nodes": [
+    {
+      "id": "91b2da78-8559-452e-be7b-e01a21a658d8",
+      "position": {
+        "x": 291,
+        "y": 368
+      },
+      "data": {
+        "title": "Beginning",
+        "beats": [
+          "Rabbert & Nestor spawn into the world"
+        ],
+        "imageAssetIds": []
+      }
+    },
+    {
+      "id": "18c20da5-eb06-4034-820d-4b2110966690",
+      "position": {
+        "x": 789,
+        "y": 353.5
+      },
+      "data": {
+        "title": "Story Beat",
+        "beats": [
+          ""
+        ],
+        "imageAssetIds": []
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "51e7f8e4-9aaf-480f-bce9-f43aba212145",
+      "source": "91b2da78-8559-452e-be7b-e01a21a658d8",
+      "target": "18c20da5-eb06-4034-820d-4b2110966690",
+      "sourceHandle": "out",
+      "targetHandle": "in",
+      "relation": "THEREFORE"
+    }
+  ],
+  "assets": [],
+  "viewport": {
+    "x": -70.55707544502752,
+    "y": 81.28043761627112,
+    "zoom": 1.0000000000000002
+  }
+}

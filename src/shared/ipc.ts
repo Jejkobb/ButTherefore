@@ -16,6 +16,7 @@ export interface StoryBridge {
   openProject: () => Promise<ProjectLoadResult | null>;
   saveProject: (project: StoryProjectFile, projectPath: string | null) => Promise<ProjectSaveResult | null>;
   saveProjectAs: (project: StoryProjectFile) => Promise<ProjectSaveResult | null>;
+  pickImageFiles: () => Promise<string[]>;
   importAsset: (sourcePath: string) => Promise<RuntimeStoryAsset>;
   autosaveProject: (project: StoryProjectFile) => Promise<void>;
 }

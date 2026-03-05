@@ -4,10 +4,12 @@ import {
   BackgroundVariant,
   ConnectionLineType,
   Controls,
+  type FinalConnectionState,
   MiniMap,
   ReactFlow,
   ReactFlowProvider,
   useReactFlow,
+  type OnConnectStartParams,
   type NodeDragHandler,
   type XYPosition
 } from "@xyflow/react";
@@ -30,10 +32,23 @@ function isTypingTarget(target: EventTarget | null): boolean {
   return target.isContentEditable || tag === "input" || tag === "textarea" || tag === "select";
 }
 
+function eventToClientPosition(event: MouseEvent | TouchEvent): { x: number; y: number } {
+  if ("touches" in event && event.touches.length > 0) {
+    return { x: event.touches[0].clientX, y: event.touches[0].clientY };
+  }
+
+  if ("changedTouches" in event && event.changedTouches.length > 0) {
+    return { x: event.changedTouches[0].clientX, y: event.changedTouches[0].clientY };
+  }
+
+  return { x: (event as MouseEvent).clientX, y: (event as MouseEvent).clientY };
+}
+
 function Editor() {
   const flow = useReactFlow();
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const dragStartPositions = useRef<Record<string, XYPosition>>({});
+  const connectStartRef = useRef<OnConnectStartParams | null>(null);
 
   const doc = useGraphStore((state) => state.doc);
   const history = useGraphStore((state) => state.history);
@@ -44,6 +59,7 @@ function Editor() {
   const applyEdgeChangesLive = useGraphStore((state) => state.applyEdgeChangesLive);
   const setViewport = useGraphStore((state) => state.setViewport);
   const connectNodes = useGraphStore((state) => state.connectNodes);
+  const createNodeFromConnection = useGraphStore((state) => state.createNodeFromConnection);
   const commitNodeMove = useGraphStore((state) => state.commitNodeMove);
   const createNode = useGraphStore((state) => state.createNode);
   const deleteSelection = useGraphStore((state) => state.deleteSelection);
@@ -56,6 +72,15 @@ function Editor() {
   const autosaveProject = useGraphStore((state) => state.autosaveProject);
 
   const toolbarTitle = useMemo(() => `${getDisplayName(projectPath)}${dirty ? " *" : ""}`, [projectPath, dirty]);
+
+  const createNodeAtViewportCenter = useCallback(() => {
+    const bounds = wrapperRef.current?.getBoundingClientRect();
+    const center = flow.screenToFlowPosition({
+      x: (bounds?.left ?? 0) + (bounds?.width ?? window.innerWidth) / 2,
+      y: (bounds?.top ?? 0) + (bounds?.height ?? window.innerHeight) / 2
+    });
+    createNode(center);
+  }, [createNode, flow]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -81,6 +106,25 @@ function Editor() {
     commitNodeMove(dragStartPositions.current);
     dragStartPositions.current = {};
   }, [commitNodeMove]);
+
+  const onConnectEnd = useCallback(
+    (event: MouseEvent | TouchEvent, connectionState: FinalConnectionState) => {
+      const connectStart = connectStartRef.current;
+      connectStartRef.current = null;
+
+      if (!connectStart || connectStart.handleType !== "source" || !connectStart.nodeId || connectionState.isValid) {
+        return;
+      }
+
+      const flowPosition =
+        connectionState.to ??
+        connectionState.pointer ??
+        flow.screenToFlowPosition(eventToClientPosition(event));
+
+      createNodeFromConnection(connectStart.nodeId, connectStart.handleId, flowPosition);
+    },
+    [createNodeFromConnection, flow]
+  );
 
   useEffect(() => {
     // Global shortcuts: N, Delete, Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z, Ctrl/Cmd+S, Ctrl/Cmd+O.
@@ -114,12 +158,7 @@ function Editor() {
 
       if (!modKey && event.key.toLowerCase() === "n") {
         event.preventDefault();
-        const bounds = wrapperRef.current?.getBoundingClientRect();
-        const center = flow.screenToFlowPosition({
-          x: (bounds?.left ?? 0) + (bounds?.width ?? window.innerWidth) / 2,
-          y: (bounds?.top ?? 0) + (bounds?.height ?? window.innerHeight) / 2
-        });
-        createNode(center);
+        createNodeAtViewportCenter();
         return;
       }
 
@@ -131,13 +170,14 @@ function Editor() {
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [createNode, deleteSelection, flow, openProject, redo, saveProject, undo]);
+  }, [createNodeAtViewportCenter, deleteSelection, openProject, redo, saveProject, undo]);
 
   return (
     <div className="app-shell">
       <header className="app-toolbar">
         <div className="app-toolbar__brand">Story Beat Node Editor</div>
         <div className="app-toolbar__actions">
+          <button onClick={createNodeAtViewportCenter} type="button">+ Node</button>
           <button onClick={() => void newProject()} type="button">New</button>
           <button onClick={() => void openProject()} type="button">Open</button>
           <button onClick={() => void saveProject()} type="button">Save</button>
@@ -158,6 +198,10 @@ function Editor() {
           onNodesChange={applyNodeChangesLive}
           onEdgesChange={applyEdgeChangesLive}
           onConnect={connectNodes}
+          onConnectStart={(_event, params) => {
+            connectStartRef.current = params;
+          }}
+          onConnectEnd={onConnectEnd}
           onNodeDragStart={onNodeDragStart}
           onNodeDragStop={onNodeDragStop}
           connectionLineType={ConnectionLineType.Bezier}
@@ -168,19 +212,23 @@ function Editor() {
           fitView={false}
           viewport={doc.viewport}
           onViewportChange={setViewport}
+          onPaneDoubleClick={(event) => {
+            const position = flow.screenToFlowPosition({ x: event.clientX, y: event.clientY });
+            createNode(position);
+          }}
           defaultEdgeOptions={{
             type: "storyEdge",
             animated: false
           }}
         >
-          <Background variant={BackgroundVariant.Dots} gap={28} size={1.4} color="rgba(130, 146, 176, 0.28)" />
+          <Background variant={BackgroundVariant.Dots} gap={30} size={1.15} color="rgba(255, 255, 255, 0.14)" />
           <Controls className="flow-controls" showInteractive={false} />
           <MiniMap
             className="flow-minimap"
             pannable
             zoomable
-            nodeColor={() => "rgba(180, 199, 255, 0.8)"}
-            maskColor="rgba(5, 8, 13, 0.72)"
+            nodeColor={() => "rgba(210, 210, 210, 0.7)"}
+            maskColor="rgba(5, 5, 5, 0.76)"
           />
         </ReactFlow>
       </main>

@@ -98,7 +98,6 @@ function Editor() {
   const connectNodes = useGraphStore((state) => state.connectNodes);
   const createNodeFromConnection = useGraphStore((state) => state.createNodeFromConnection);
   const commitNodeMove = useGraphStore((state) => state.commitNodeMove);
-  const dockImageNodesToStoryNodes = useGraphStore((state) => state.dockImageNodesToStoryNodes);
   const createNode = useGraphStore((state) => state.createNode);
   const createPostItNode = useGraphStore((state) => state.createPostItNode);
   const createImageNodes = useGraphStore((state) => state.createImageNodes);
@@ -236,19 +235,15 @@ function Editor() {
   }, []);
 
   const onNodeDragStop: NodeDragHandler = useCallback(() => {
-    const movedIds = Object.keys(dragStartPositions.current);
     commitNodeMove(dragStartPositions.current);
-    dockImageNodesToStoryNodes(movedIds);
     dragStartPositions.current = {};
-  }, [commitNodeMove, dockImageNodesToStoryNodes]);
+  }, [commitNodeMove]);
 
   useEffect(() => {
     // Browser/electron can occasionally miss drag-stop if pointer-up occurs outside the window.
     const forceStopDrag = () => {
       if (Object.keys(dragStartPositions.current).length === 0) return;
-      const movedIds = Object.keys(dragStartPositions.current);
       commitNodeMove(dragStartPositions.current);
-      dockImageNodesToStoryNodes(movedIds);
       dragStartPositions.current = {};
     };
 
@@ -265,7 +260,7 @@ function Editor() {
       window.removeEventListener("touchend", forceStopDrag);
       window.removeEventListener("blur", forceStopDrag);
     };
-  }, [commitNodeMove, dockImageNodesToStoryNodes]);
+  }, [commitNodeMove]);
 
   useEffect(() => {
     const currentViewport = flow.getViewport();

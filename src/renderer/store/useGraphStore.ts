@@ -41,6 +41,7 @@ interface GraphStore {
   createdAt: string;
   lastSavedAt: string | null;
   dirty: boolean;
+  hoveredStoryNodeId: string | null;
   executeCommand: (command: GraphCommand) => void;
   undo: () => void;
   redo: () => void;
@@ -49,6 +50,7 @@ interface GraphStore {
   applyNodeChangesLive: (changes: NodeChange<FlowNode>[]) => void;
   applyEdgeChangesLive: (changes: EdgeChange<StoryFlowEdge>[]) => void;
   setViewport: (viewport: GraphDocument["viewport"]) => void;
+  setHoveredStoryNodeId: (nodeId: string | null) => void;
   createNode: (position: XYPosition) => void;
   createPostItNode: (position: XYPosition) => void;
   createImageNodes: (position: XYPosition, filePaths: string[]) => Promise<void>;
@@ -76,6 +78,55 @@ interface GraphStore {
 const empty = createEmptyProject();
 const DEFAULT_IMAGE_NODE_WIDTH = 180;
 const DEFAULT_IMAGE_NODE_HEIGHT = 120;
+const MIN_IMAGE_NODE_WIDTH = 92;
+const MIN_IMAGE_NODE_HEIGHT = 62;
+const IMAGE_SPAWN_LONG_SIDE = 220;
+
+interface ImageDimensions {
+  width: number;
+  height: number;
+}
+
+function readImageDimensions(uri: string): Promise<ImageDimensions | null> {
+  return new Promise((resolve) => {
+    const image = new Image();
+    image.onload = () => {
+      const width = image.naturalWidth;
+      const height = image.naturalHeight;
+      if (width > 0 && height > 0) {
+        resolve({ width, height });
+        return;
+      }
+      resolve(null);
+    };
+    image.onerror = () => resolve(null);
+    image.src = uri;
+  });
+}
+
+function computeStandaloneImageSize(dimensions: ImageDimensions | null): { width: number; height: number } {
+  if (!dimensions) {
+    return { width: DEFAULT_IMAGE_NODE_WIDTH, height: DEFAULT_IMAGE_NODE_HEIGHT };
+  }
+
+  const ratio = dimensions.width / dimensions.height;
+  let width: number;
+  let height: number;
+
+  if (ratio >= 1) {
+    width = IMAGE_SPAWN_LONG_SIDE;
+    height = width / ratio;
+  } else {
+    height = IMAGE_SPAWN_LONG_SIDE;
+    width = height * ratio;
+  }
+
+  const scaleUp = Math.max(MIN_IMAGE_NODE_WIDTH / width, MIN_IMAGE_NODE_HEIGHT / height, 1);
+  return {
+    width: width * scaleUp,
+    height: height * scaleUp
+  };
+}
 
 function createStarterNode(position: XYPosition = { x: 120, y: 120 }): StoryFlowNode {
   return {
@@ -114,10 +165,11 @@ function createImageNodeTemplate(assetId: string, position: XYPosition, parentId
     type: "imageNode",
     position,
     draggable,
-    ...(parentId ? { parentId, extent: "parent" as const } : {}),
+    ...(parentId ? { parentId, extent: "parent" as const, selectable: false, focusable: false } : {}),
     style: {
       width: DEFAULT_IMAGE_NODE_WIDTH,
-      height: DEFAULT_IMAGE_NODE_HEIGHT
+      height: DEFAULT_IMAGE_NODE_HEIGHT,
+      ...(parentId ? { pointerEvents: "none" as const } : {})
     },
     data: {
       assetId
@@ -198,6 +250,7 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
   createdAt: empty.meta.createdAt,
   lastSavedAt: null,
   dirty: false,
+  hoveredStoryNodeId: null,
 
   executeCommand: (command) => {
     set((state) => {
@@ -268,12 +321,20 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
   canRedo: () => get().history.future.length > 0,
 
   applyNodeChangesLive: (changes) => {
-    set((state) => ({
-      doc: {
-        ...state.doc,
-        nodes: applyNodeChanges(changes, state.doc.nodes)
-      }
-    }));
+    set((state) => {
+      const blockedIds = new Set(
+        state.doc.nodes
+          .filter((node) => isImageNode(node) && Boolean(node.parentId))
+          .map((node) => node.id)
+      );
+      const filteredChanges = changes.filter((change) => !("id" in change) || !blockedIds.has(change.id));
+      return {
+        doc: {
+          ...state.doc,
+          nodes: applyNodeChanges(filteredChanges, state.doc.nodes)
+        }
+      };
+    });
   },
 
   applyEdgeChangesLive: (changes) => {
@@ -302,6 +363,10 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
         }
       };
     });
+  },
+
+  setHoveredStoryNodeId: (nodeId) => {
+    set({ hoveredStoryNodeId: nodeId });
   },
 
   createNode: (position) => {
@@ -337,12 +402,23 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
       acc[asset.id] = asset;
       return acc;
     }, {});
-    const imageNodes = importedAssets.map((asset, index) =>
-      createImageNodeTemplate(asset.id, {
-        x: position.x + index * 24,
-        y: position.y + index * 24
-      })
-    );
+    const imageDimensions = await Promise.all(importedAssets.map((asset) => readImageDimensions(asset.uri)));
+    const currentDoc = get().doc;
+    const baseZIndex = currentDoc.nodes.reduce((maxZ, node) => Math.max(maxZ, node.zIndex ?? 0), 0);
+    const imageNodes = importedAssets.map((asset, index) => {
+      const size = computeStandaloneImageSize(imageDimensions[index] ?? null);
+      return {
+        ...createImageNodeTemplate(asset.id, {
+          x: position.x + index * 24,
+          y: position.y + index * 24
+        }),
+        style: {
+          width: size.width,
+          height: size.height
+        },
+        zIndex: baseZIndex + index + 1
+      };
+    });
 
     get().executeCommand({
       label: "Add Images",
@@ -783,12 +859,19 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
       if (!bestStory) {
         if (!node.parentId) return node;
 
+        const nodeStyle = node.style ?? {};
         changed = true;
         return {
           ...node,
           parentId: undefined,
           extent: undefined,
           draggable: true,
+          selectable: true,
+          focusable: true,
+          style: {
+            ...nodeStyle,
+            pointerEvents: undefined
+          },
           position: absolute
         };
       }
@@ -818,6 +901,12 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
         parentId: bestStory.id,
         extent: "parent",
         draggable: false,
+        selectable: false,
+        focusable: false,
+        style: {
+          ...(node.style ?? {}),
+          pointerEvents: "none"
+        },
         position: { x: 0, y: 0 }
       };
     });
@@ -869,10 +958,13 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
         ...node,
         position: { x: 0, y: 0 },
         draggable: false,
+        selectable: false,
+        focusable: false,
         style: {
           ...(node.style ?? {}),
           width: parentSize.width,
-          height: parentSize.height
+          height: parentSize.height,
+          pointerEvents: "none"
         }
       };
     });

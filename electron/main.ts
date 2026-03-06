@@ -3,6 +3,7 @@ import { promises as fs } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { pathToFileURL } from "node:url";
 import { app, BrowserWindow, dialog, ipcMain, Menu, net, protocol, shell } from "electron";
+import { autoUpdater } from "electron-updater";
 import { assertStoryProjectFile, type RuntimeStoryAsset, type StoryProjectFile } from "../src/shared/types";
 import type { ProjectLoadResult, ProjectSaveResult } from "../src/shared/ipc";
 
@@ -12,6 +13,7 @@ const AUTOSAVE_ROOT = "autosave";
 const SESSION_ASSETS_ROOT = "session-assets";
 const ASSET_SCHEME = "story-asset";
 const ASSET_HOST = "asset";
+const UPDATE_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
 
 let mainWindow: BrowserWindow | null = null;
 let currentProjectPath: string | null = null;
@@ -171,6 +173,62 @@ async function createWindow(): Promise<void> {
   }
 }
 
+function registerAutoUpdates(): void {
+  if (!app.isPackaged) {
+    return;
+  }
+
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on("error", (error) => {
+    console.error("Auto-update error", error);
+  });
+
+  autoUpdater.on("update-available", (info) => {
+    console.info(`Update available: ${info.version}`);
+  });
+
+  autoUpdater.on("update-not-available", () => {
+    console.info("No updates available.");
+  });
+
+  autoUpdater.on("update-downloaded", async (info) => {
+    console.info(`Update downloaded: ${info.version}`);
+
+    if (!mainWindow) {
+      autoUpdater.quitAndInstall();
+      return;
+    }
+
+    const decision = await dialog.showMessageBox(mainWindow, {
+      type: "info",
+      title: "Update ready",
+      message: `Version ${info.version} has been downloaded.`,
+      detail: "Restart now to install the update.",
+      buttons: ["Restart now", "Later"],
+      defaultId: 0,
+      cancelId: 1
+    });
+
+    if (decision.response === 0) {
+      setImmediate(() => {
+        autoUpdater.quitAndInstall();
+      });
+    }
+  });
+
+  const checkForUpdates = (): void => {
+    void autoUpdater.checkForUpdates().catch((error) => {
+      console.error("Failed to check for updates", error);
+    });
+  };
+
+  checkForUpdates();
+  const interval = setInterval(checkForUpdates, UPDATE_CHECK_INTERVAL_MS);
+  interval.unref();
+}
+
 function registerIpc(): void {
   ipcMain.handle("project:new", async () => {
     currentProjectPath = null;
@@ -326,6 +384,7 @@ app.whenReady().then(async () => {
   await initializeWorkspace();
   registerIpc();
   await createWindow();
+  registerAutoUpdates();
 
   app.on("activate", async () => {
     if (BrowserWindow.getAllWindows().length === 0) {

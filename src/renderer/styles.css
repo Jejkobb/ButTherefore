@@ -23,9 +23,9 @@
   --image-node-bg: rgba(12, 18, 28, 0.84);
   --image-node-missing-bg: rgba(33, 42, 56, 0.86);
   --image-node-missing-text: #9fb0c8;
-  --image-delete-bg: rgba(153, 26, 26, 0.94);
-  --image-delete-border: rgba(255, 146, 146, 0.64);
-  --image-delete-text: #fff1f1;
+  --image-delete-bg: rgba(250, 252, 255, 0.96);
+  --image-delete-border: rgba(10, 14, 22, 0.45);
+  --image-delete-text: #0f1622;
   --postit-bg: #f2dc7e;
   --postit-bg-accent: #e8cf68;
   --postit-border: rgba(118, 95, 24, 0.45);
@@ -71,9 +71,9 @@
   --image-node-bg: rgba(241, 246, 252, 0.95);
   --image-node-missing-bg: rgba(224, 233, 245, 0.86);
   --image-node-missing-text: #4f5f76;
-  --image-delete-bg: rgba(187, 58, 58, 0.96);
-  --image-delete-border: rgba(255, 214, 214, 0.7);
-  --image-delete-text: #fff7f7;
+  --image-delete-bg: rgba(255, 255, 255, 0.97);
+  --image-delete-border: rgba(17, 24, 36, 0.42);
+  --image-delete-text: #141d2b;
   --postit-bg: #ffe689;
   --postit-bg-accent: #f2d35c;
   --postit-border: rgba(132, 106, 22, 0.34);
@@ -352,6 +352,7 @@ textarea {
   width: 100%;
   height: 100%;
   padding-top: 0;
+  isolation: isolate;
 }
 
 .postit-node-shell {
@@ -632,7 +633,7 @@ textarea {
   transform: translate(-50%, 40%) scale(0.92);
   opacity: 0;
   pointer-events: none;
-  z-index: 16;
+  z-index: 1200;
   transition: opacity 120ms ease, transform 120ms ease, border-color 120ms ease, color 120ms ease, background 120ms ease;
 }
 
@@ -714,14 +715,25 @@ textarea {
   display: grid;
   place-items: center;
   cursor: pointer;
+  padding: 0;
+  line-height: 0;
+  z-index: 40;
   opacity: 0;
   pointer-events: none;
   transition: opacity 120ms ease;
 }
 
-.image-node:hover .image-node__delete,
-.image-node:focus-within .image-node__delete,
+.image-node__delete svg {
+  display: block;
+}
+
+.image-node__delete.is-visible,
 .image-node__delete:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.image-node__delete:hover {
   opacity: 1;
   pointer-events: auto;
 }

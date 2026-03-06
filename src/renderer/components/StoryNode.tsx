@@ -51,6 +51,8 @@ function extractDroppedPaths(event: DragEvent<HTMLDivElement>): string[] {
 
 const MIN_NODE_WIDTH = 320;
 const MIN_NODE_HEIGHT = 68;
+const IMAGE_FAB_CLEARANCE = 12;
+const MIN_IN_NODE_IMAGE_HEIGHT = 50;
 
 type ResizeCorner = "bl" | "br";
 
@@ -142,12 +144,13 @@ function readImageFrameRect(nodeSurface: HTMLDivElement | null, nodeSize: { widt
   const beatsHeight = beatsContainer ? beatsContainer.scrollHeight : 0;
   const hasBeats = beatsHeight > 0;
   const top = paddingTop + beatsHeight + (hasBeats ? rowGap : 0);
+  const bottomReservedSpace = IMAGE_FAB_CLEARANCE;
 
   return {
     x: paddingLeft,
     y: top,
     width: Math.max(1, nodeSize.width - paddingLeft - paddingRight),
-    height: Math.max(1, nodeSize.height - top - paddingBottom)
+    height: Math.max(1, nodeSize.height - top - paddingBottom - bottomReservedSpace)
   };
 }
 
@@ -216,6 +219,48 @@ function computeAttachedImageLayouts(imageIds: string[], frame: ImageFrameRect):
   return layouts;
 }
 
+function readMinimumLayoutHeight(layouts: Map<string, ImageLayoutRect>): number {
+  let minimum = Number.POSITIVE_INFINITY;
+
+  layouts.forEach((layout) => {
+    minimum = Math.min(minimum, layout.height);
+  });
+
+  return Number.isFinite(minimum) ? minimum : 0;
+}
+
+function enforceMinimumInNodeImageHeight(
+  nodeSurface: HTMLDivElement | null,
+  nodeSize: { width: number; height: number },
+  imageCount: number
+): { width: number; height: number } {
+  if (imageCount <= 0) return nodeSize;
+
+  let adjustedHeight = nodeSize.height;
+
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const frame = readImageFrameRect(nodeSurface, { width: nodeSize.width, height: adjustedHeight });
+    const probeIds = Array.from({ length: imageCount }, (_, index) => `probe-${index}`);
+    const probeLayouts = computeAttachedImageLayouts(probeIds, frame);
+    const minimumLayoutHeight = readMinimumLayoutHeight(probeLayouts);
+
+    if (minimumLayoutHeight <= 0 || minimumLayoutHeight >= MIN_IN_NODE_IMAGE_HEIGHT) {
+      break;
+    }
+
+    const scaledFrameHeight = Math.ceil(frame.height * (MIN_IN_NODE_IMAGE_HEIGHT / minimumLayoutHeight));
+    const nonFrameHeight = adjustedHeight - frame.height;
+    const nextHeight = Math.ceil(nonFrameHeight + scaledFrameHeight);
+    if (nextHeight <= adjustedHeight) break;
+    adjustedHeight = nextHeight;
+  }
+
+  return {
+    width: nodeSize.width,
+    height: adjustedHeight
+  };
+}
+
 export const StoryNode = memo(function StoryNode({ id, data }: NodeProps<StoryNodeData>) {
   const [isDragOver, setIsDragOver] = useState(false);
   const [editingBeatIndex, setEditingBeatIndex] = useState<number | null>(null);
@@ -228,6 +273,7 @@ export const StoryNode = memo(function StoryNode({ id, data }: NodeProps<StoryNo
 
   const updateBeatLine = useGraphStore((state) => state.updateBeatLine);
   const attachImagesToNode = useGraphStore((state) => state.attachImagesToNode);
+  const setHoveredStoryNodeId = useGraphStore((state) => state.setHoveredStoryNodeId);
   const attachedImageCount = useGraphStore(
     (state) => state.doc.nodes.filter((node) => node.type === "imageNode" && node.parentId === id).length
   );
@@ -283,13 +329,42 @@ export const StoryNode = memo(function StoryNode({ id, data }: NodeProps<StoryNo
       const node = state.doc.nodes.find((candidate) => candidate.id === id);
       if (!node) return;
 
-      const nodeSize = nodeSizeOverride ?? readNodeSize(node);
-      const frame = readImageFrameRect(nodeSurface, nodeSize);
       const attachedImageIds = readAttachedImageIds(state.doc.nodes, id);
+      const baseNodeSize = nodeSizeOverride ?? readNodeSize(node);
+      const contentMinimumHeight = readNodeContentRequiredHeight(nodeSurface);
+      const withImageMinimum = enforceMinimumInNodeImageHeight(nodeSurface, baseNodeSize, attachedImageIds.length);
+      const targetNodeHeight =
+        attachedImageIds.length === 0
+          ? Math.max(contentMinimumHeight, MIN_NODE_HEIGHT)
+          : Math.max(contentMinimumHeight, withImageMinimum.height);
+
+      const resolvedNodeSize = {
+        width: baseNodeSize.width,
+        height: targetNodeHeight
+      };
+
+      const frame = readImageFrameRect(nodeSurface, resolvedNodeSize);
       const layouts = computeAttachedImageLayouts(attachedImageIds, frame);
       let changed = false;
 
       const nextNodes = state.doc.nodes.map((candidate) => {
+        if (candidate.id === id) {
+          const currentSize = readNodeSize(candidate);
+          if (currentSize.width === resolvedNodeSize.width && currentSize.height === resolvedNodeSize.height) {
+            return candidate;
+          }
+
+          changed = true;
+          return {
+            ...candidate,
+            style: {
+              ...(candidate.style ?? {}),
+              width: resolvedNodeSize.width,
+              height: resolvedNodeSize.height
+            }
+          };
+        }
+
         const layout = layouts.get(candidate.id);
         if (!layout) return candidate;
         const currentSize = readNodeSize(candidate);
@@ -298,7 +373,10 @@ export const StoryNode = memo(function StoryNode({ id, data }: NodeProps<StoryNo
           candidate.position.y === layout.y &&
           currentSize.width === layout.width &&
           currentSize.height === layout.height &&
-          candidate.draggable === false
+          candidate.draggable === false &&
+          candidate.selectable === false &&
+          candidate.focusable === false &&
+          candidate.style?.pointerEvents === "none"
         ) {
           return candidate;
         }
@@ -308,10 +386,13 @@ export const StoryNode = memo(function StoryNode({ id, data }: NodeProps<StoryNo
           ...candidate,
           position: { x: layout.x, y: layout.y },
           draggable: false,
+          selectable: false,
+          focusable: false,
           style: {
             ...(candidate.style ?? {}),
             width: layout.width,
-            height: layout.height
+            height: layout.height,
+            pointerEvents: "none"
           }
         };
       });
@@ -324,8 +405,9 @@ export const StoryNode = memo(function StoryNode({ id, data }: NodeProps<StoryNo
           nodes: nextNodes
         }
       });
+      scheduleNodeInternalsUpdate();
     },
-    [id]
+    [id, scheduleNodeInternalsUpdate]
   );
 
   const resizeBeatField = useCallback(
@@ -369,8 +451,11 @@ export const StoryNode = memo(function StoryNode({ id, data }: NodeProps<StoryNo
       if (pendingInternalsFrame.current !== null) {
         cancelAnimationFrame(pendingInternalsFrame.current);
       }
+      if (useGraphStore.getState().hoveredStoryNodeId === id) {
+        setHoveredStoryNodeId(null);
+      }
     };
-  }, []);
+  }, [id, setHoveredStoryNodeId]);
 
   const applyLiveResize = useCallback((next: NodeRectSnapshot) => {
     const frame = readImageFrameRect(nodeSurfaceRef.current, { width: next.width, height: next.height });
@@ -400,10 +485,13 @@ export const StoryNode = memo(function StoryNode({ id, data }: NodeProps<StoryNo
                 ...node,
                 position: { x: layout.x, y: layout.y },
                 draggable: false,
+                selectable: false,
+                focusable: false,
                 style: {
                   ...(node.style ?? {}),
                   width: layout.width,
-                  height: layout.height
+                  height: layout.height,
+                  pointerEvents: "none"
                 }
               };
             }
@@ -447,10 +535,13 @@ export const StoryNode = memo(function StoryNode({ id, data }: NodeProps<StoryNo
                 ...node,
                 position: { x: layout.x, y: layout.y },
                 draggable: false,
+                selectable: false,
+                focusable: false,
                 style: {
                   ...(node.style ?? {}),
                   width: layout.width,
-                  height: layout.height
+                  height: layout.height,
+                  pointerEvents: "none"
                 }
               };
             }
@@ -482,10 +573,13 @@ export const StoryNode = memo(function StoryNode({ id, data }: NodeProps<StoryNo
                 ...node,
                 position: { x: layout.x, y: layout.y },
                 draggable: false,
+                selectable: false,
+                focusable: false,
                 style: {
                   ...(node.style ?? {}),
                   width: layout.width,
-                  height: layout.height
+                  height: layout.height,
+                  pointerEvents: "none"
                 }
               };
             }
@@ -517,6 +611,13 @@ export const StoryNode = memo(function StoryNode({ id, data }: NodeProps<StoryNo
       height
     };
     const beatMinimumHeight = readBeatTextMinimumHeight(nodeSurfaceRef.current);
+    const attachedImageCountAtStart = readAttachedImageIds(useGraphStore.getState().doc.nodes, id).length;
+    const withImageMinimum = enforceMinimumInNodeImageHeight(
+      nodeSurfaceRef.current,
+      { width, height },
+      attachedImageCountAtStart
+    );
+    const resizeMinimumHeight = Math.max(beatMinimumHeight, withImageMinimum.height);
 
     resizeSessionRef.current = {
       pointerId: event.pointerId,
@@ -528,7 +629,7 @@ export const StoryNode = memo(function StoryNode({ id, data }: NodeProps<StoryNo
       startHeight: height,
       zoom,
       minWidth: Math.min(MIN_NODE_WIDTH, width),
-      minHeight: Math.min(beatMinimumHeight, height)
+      minHeight: Math.min(resizeMinimumHeight, height)
     };
 
     const onPointerMove = (moveEvent: PointerEvent) => {
@@ -547,6 +648,15 @@ export const StoryNode = memo(function StoryNode({ id, data }: NodeProps<StoryNo
       } else {
         nextWidth = Math.max(session.minWidth, session.startWidth - dx);
         nextX = session.startNodeX + (session.startWidth - nextWidth);
+      }
+
+      if (attachedImageCountAtStart > 0) {
+        const withImageMinimum = enforceMinimumInNodeImageHeight(
+          nodeSurfaceRef.current,
+          { width: nextWidth, height: nextHeight },
+          attachedImageCountAtStart
+        );
+        nextHeight = Math.max(nextHeight, withImageMinimum.height);
       }
 
       applyLiveResize({ x: nextX, width: nextWidth, height: nextHeight });
@@ -583,6 +693,19 @@ export const StoryNode = memo(function StoryNode({ id, data }: NodeProps<StoryNo
   return (
     <div
       className={`story-node-shell ${isDragOver ? "is-drag-over" : ""}`}
+      onPointerEnter={() => {
+        setHoveredStoryNodeId(id);
+      }}
+      onPointerLeave={(event) => {
+        const related = event.relatedTarget;
+        if (related instanceof HTMLElement) {
+          const nextParentId = related.closest<HTMLElement>("[data-parent-story-id]")?.dataset.parentStoryId;
+          if (nextParentId === id) {
+            return;
+          }
+        }
+        setHoveredStoryNodeId(null);
+      }}
       onDragOver={(event) => {
         event.preventDefault();
         setIsDragOver(true);

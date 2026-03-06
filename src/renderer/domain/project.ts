@@ -104,14 +104,17 @@ export function projectToDocument(project: StoryProjectFile, runtimeAssets: Runt
     }
 
     if (type === "imageNode") {
+      const parentedFlags = node.parentId ? { draggable: false, selectable: false, focusable: false } : {};
+      const parentedStyle = node.parentId ? { pointerEvents: "none" as const } : {};
       nodes.push({
         id: node.id,
         type: "imageNode",
         position: node.position,
         parentId: node.parentId,
         extent: node.extent,
-        ...(node.parentId ? { draggable: false } : {}),
-        ...(node.size ? { style: { width: node.size.width, height: node.size.height } } : {}),
+        ...parentedFlags,
+        ...(node.size ? { style: { width: node.size.width, height: node.size.height, ...parentedStyle } } : {}),
+        ...(!node.size && node.parentId ? { style: { ...parentedStyle } } : {}),
         data: normalizeImageNodeData(node.data)
       });
       continue;
@@ -139,9 +142,12 @@ export function projectToDocument(project: StoryProjectFile, runtimeAssets: Runt
         extent: "parent",
         position: { x: 0, y: 0 },
         draggable: false,
+        selectable: false,
+        focusable: false,
         style: {
           width: node.size?.width ?? 320,
-          height: node.size?.height ?? 120
+          height: node.size?.height ?? 120,
+          pointerEvents: "none"
         },
         data: { assetId }
       });

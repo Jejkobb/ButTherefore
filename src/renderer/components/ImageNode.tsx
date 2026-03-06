@@ -1,5 +1,6 @@
-import { memo, useCallback, useEffect, useRef, type PointerEvent as ReactPointerEvent } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { useReactFlow, useUpdateNodeInternals, type NodeProps } from "@xyflow/react";
+import { X } from "lucide-react";
 import type { ImageNodeData } from "@/shared/types";
 import { useGraphStore } from "@/renderer/store/useGraphStore";
 
@@ -34,15 +35,45 @@ function readNodeSize(node: { width?: number; height?: number; style?: Record<st
   };
 }
 
-export const ImageNode = memo(function ImageNode({ id, data }: NodeProps<ImageNodeData>) {
+export const ImageNode = memo(function ImageNode({ id, data, parentId }: NodeProps<ImageNodeData>) {
   const asset = useGraphStore((state) => state.doc.assets[data.assetId]);
   const imageNode = useGraphStore((state) => state.doc.nodes.find((candidate) => candidate.id === id));
   const removeImageNode = useGraphStore((state) => state.removeImageNode);
+  const hoveredStoryNodeId = useGraphStore((state) => state.hoveredStoryNodeId);
   const flow = useReactFlow();
   const updateNodeInternals = useUpdateNodeInternals();
   const pendingInternalsFrame = useRef<number | null>(null);
   const resizeSessionRef = useRef<ResizeSession | null>(null);
-  const isParented = Boolean(imageNode?.parentId);
+  const naturalAspectRatioRef = useRef<number | null>(null);
+  const [naturalAspectRatio, setNaturalAspectRatio] = useState<number | null>(null);
+  const [isDeleteHovered, setIsDeleteHovered] = useState(false);
+  const parentStoryId = parentId ?? imageNode?.parentId ?? null;
+  const isParented = Boolean(parentStoryId);
+  const nodeSize = imageNode ? readNodeSize(imageNode) : { width: MIN_IMAGE_WIDTH, height: MIN_IMAGE_HEIGHT };
+  const showDelete = isParented && (hoveredStoryNodeId === parentStoryId || isDeleteHovered);
+
+  const deleteButtonStyle = useMemo<CSSProperties | undefined>(() => {
+    if (!isParented) return undefined;
+    const ratio = naturalAspectRatio ?? naturalAspectRatioRef.current;
+    if (!ratio || nodeSize.width <= 0 || nodeSize.height <= 0) return undefined;
+
+    const frameRatio = nodeSize.width / nodeSize.height;
+    let insetX = 0;
+    let insetY = 0;
+
+    if (ratio > frameRatio) {
+      const renderedHeight = nodeSize.width / ratio;
+      insetY = Math.max(0, (nodeSize.height - renderedHeight) / 2);
+    } else {
+      const renderedWidth = nodeSize.height * ratio;
+      insetX = Math.max(0, (nodeSize.width - renderedWidth) / 2);
+    }
+
+    return {
+      top: insetY + 5,
+      right: insetX + 5
+    };
+  }, [isParented, naturalAspectRatio, nodeSize.height, nodeSize.width]);
 
   const scheduleNodeInternalsUpdate = useCallback(() => {
     if (pendingInternalsFrame.current !== null) return;
@@ -52,6 +83,11 @@ export const ImageNode = memo(function ImageNode({ id, data }: NodeProps<ImageNo
       updateNodeInternals(id);
     });
   }, [id, updateNodeInternals]);
+
+  useEffect(() => {
+    naturalAspectRatioRef.current = null;
+    setNaturalAspectRatio(null);
+  }, [asset?.id]);
 
   useEffect(() => {
     return () => {
@@ -146,7 +182,7 @@ export const ImageNode = memo(function ImageNode({ id, data }: NodeProps<ImageNo
 
       const nodeSize = readNodeSize(node);
       const zoom = Math.max(flow.getZoom(), 0.01);
-      const aspectRatio = nodeSize.width / Math.max(nodeSize.height, 1);
+      const aspectRatio = naturalAspectRatioRef.current ?? (nodeSize.width / Math.max(nodeSize.height, 1));
 
       const start: NodeRectSnapshot = {
         x: node.position.x,
@@ -225,7 +261,7 @@ export const ImageNode = memo(function ImageNode({ id, data }: NodeProps<ImageNo
   );
 
   return (
-    <div className="image-node-shell">
+    <div className="image-node-shell" data-parent-story-id={parentStoryId ?? undefined}>
       <div className={`image-node ${isParented ? "is-parented" : ""}`}>
         {!isParented ? (
           <>
@@ -241,28 +277,43 @@ export const ImageNode = memo(function ImageNode({ id, data }: NodeProps<ImageNo
             draggable={false}
             loading="lazy"
             decoding="async"
-            onLoad={scheduleNodeInternalsUpdate}
+            onLoad={(event) => {
+              const width = event.currentTarget.naturalWidth;
+              const height = event.currentTarget.naturalHeight;
+              if (width > 0 && height > 0) {
+                const ratio = width / height;
+                naturalAspectRatioRef.current = ratio;
+                setNaturalAspectRatio(ratio);
+              }
+              scheduleNodeInternalsUpdate();
+            }}
           />
         ) : (
           <div className="image-node__missing">Missing image</div>
         )}
-        <button
-          className="image-node__delete nodrag nopan"
-          type="button"
-          aria-label="Delete image"
-          title="Delete image"
-          onPointerDown={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-          }}
-          onClick={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            void removeImageNode(id);
-          }}
-        >
-          X
-        </button>
+        {isParented ? (
+          <button
+            className={`image-node__delete nodrag nopan ${showDelete ? "is-visible" : ""}`}
+            style={deleteButtonStyle}
+            type="button"
+            data-parent-story-id={parentStoryId ?? undefined}
+            aria-label="Delete image"
+            title="Delete image"
+            onPointerEnter={() => setIsDeleteHovered(true)}
+            onPointerLeave={() => setIsDeleteHovered(false)}
+            onPointerDown={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+            }}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              void removeImageNode(id);
+            }}
+          >
+            <X size={12} aria-hidden="true" />
+          </button>
+        ) : null}
       </div>
     </div>
   );

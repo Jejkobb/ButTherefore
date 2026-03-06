@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { memo, useCallback, useEffect, useRef, useState, type DragEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { Handle, Position, useReactFlow, useUpdateNodeInternals, type NodeProps } from "@xyflow/react";
 import type { StoryNodeData } from "@/shared/types";
 import { useGraphStore } from "@/renderer/store/useGraphStore";
@@ -50,7 +50,7 @@ function extractDroppedPaths(event: DragEvent<HTMLDivElement>): string[] {
 }
 
 const MIN_NODE_WIDTH = 320;
-const MIN_NODE_HEIGHT = 60;
+const MIN_NODE_HEIGHT = 68;
 
 type ResizeCorner = "bl" | "br";
 
@@ -73,6 +73,20 @@ interface NodeRectSnapshot {
   height: number;
 }
 
+interface ImageFrameRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+interface ImageLayoutRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 function readNodeSize(node: { width?: number; height?: number; style?: Record<string, unknown> }): { width: number; height: number } {
   const styleWidth = typeof node.style?.width === "number" ? node.style.width : null;
   const styleHeight = typeof node.style?.height === "number" ? node.style.height : null;
@@ -90,18 +104,14 @@ function readNodeContentRequiredHeight(nodeSurface: HTMLDivElement | null): numb
   if (!nodeSurface) return MIN_NODE_HEIGHT;
 
   const beatsContainer = nodeSurface.querySelector<HTMLElement>(".story-node__beats");
-  const imagesContainer = nodeSurface.querySelector<HTMLElement>(".story-node__images");
 
   const nodeStyles = window.getComputedStyle(nodeSurface);
   const paddingTop = parsePixels(nodeStyles.paddingTop);
   const paddingBottom = parsePixels(nodeStyles.paddingBottom);
-  const rowGap = parsePixels(nodeStyles.rowGap || nodeStyles.gap);
 
   const beatsHeight = beatsContainer ? beatsContainer.scrollHeight : 0;
-  const imagesHeight = imagesContainer ? imagesContainer.scrollHeight : 0;
-  const gapHeight = beatsContainer && imagesContainer ? rowGap : 0;
 
-  return Math.ceil(Math.max(MIN_NODE_HEIGHT, beatsHeight + imagesHeight + gapHeight + paddingTop + paddingBottom));
+  return Math.ceil(Math.max(MIN_NODE_HEIGHT, beatsHeight + paddingTop + paddingBottom));
 }
 
 function readBeatTextMinimumHeight(nodeSurface: HTMLDivElement | null): number {
@@ -117,6 +127,95 @@ function readBeatTextMinimumHeight(nodeSurface: HTMLDivElement | null): number {
   return Math.ceil(beatsContainer.scrollHeight + paddingTop + paddingBottom);
 }
 
+function readImageFrameRect(nodeSurface: HTMLDivElement | null, nodeSize: { width: number; height: number }): ImageFrameRect {
+  if (!nodeSurface) {
+    return { x: 0, y: 0, width: nodeSize.width, height: nodeSize.height };
+  }
+
+  const beatsContainer = nodeSurface.querySelector<HTMLElement>(".story-node__beats");
+  const nodeStyles = window.getComputedStyle(nodeSurface);
+  const paddingTop = parsePixels(nodeStyles.paddingTop);
+  const paddingRight = parsePixels(nodeStyles.paddingRight);
+  const paddingBottom = parsePixels(nodeStyles.paddingBottom);
+  const paddingLeft = parsePixels(nodeStyles.paddingLeft);
+  const rowGap = parsePixels(nodeStyles.rowGap || nodeStyles.gap);
+  const beatsHeight = beatsContainer ? beatsContainer.scrollHeight : 0;
+  const hasBeats = beatsHeight > 0;
+  const top = paddingTop + beatsHeight + (hasBeats ? rowGap : 0);
+
+  return {
+    x: paddingLeft,
+    y: top,
+    width: Math.max(1, nodeSize.width - paddingLeft - paddingRight),
+    height: Math.max(1, nodeSize.height - top - paddingBottom)
+  };
+}
+
+function readAttachedImageIds(nodes: Array<{ id: string; type?: string; parentId?: string }>, parentId: string): string[] {
+  return nodes
+    .filter((node) => node.type === "imageNode" && node.parentId === parentId)
+    .map((node) => node.id);
+}
+
+function pickBestGrid(count: number, frameWidth: number, frameHeight: number): { cols: number; rows: number } {
+  let bestCols = 1;
+  let bestRows = count;
+  let bestArea = -1;
+  let bestMinEdge = -1;
+
+  for (let cols = 1; cols <= count; cols += 1) {
+    const rows = Math.ceil(count / cols);
+    const cellWidth = frameWidth / cols;
+    const cellHeight = frameHeight / rows;
+    const area = cellWidth * cellHeight;
+    const minEdge = Math.min(cellWidth, cellHeight);
+
+    if (area > bestArea || (area === bestArea && minEdge > bestMinEdge)) {
+      bestArea = area;
+      bestMinEdge = minEdge;
+      bestCols = cols;
+      bestRows = rows;
+    }
+  }
+
+  return { cols: bestCols, rows: bestRows };
+}
+
+function computeAttachedImageLayouts(imageIds: string[], frame: ImageFrameRect): Map<string, ImageLayoutRect> {
+  const layouts = new Map<string, ImageLayoutRect>();
+  if (imageIds.length === 0) return layouts;
+
+  if (imageIds.length === 1) {
+    layouts.set(imageIds[0], {
+      x: frame.x,
+      y: frame.y,
+      width: frame.width,
+      height: frame.height
+    });
+    return layouts;
+  }
+
+  const { cols, rows } = pickBestGrid(imageIds.length, frame.width, frame.height);
+  const desiredGap = 6;
+  const gapX = cols > 1 ? Math.max(0, Math.min(desiredGap, (frame.width - cols) / (cols - 1))) : 0;
+  const gapY = rows > 1 ? Math.max(0, Math.min(desiredGap, (frame.height - rows) / (rows - 1))) : 0;
+  const cellWidth = Math.max(1, (frame.width - gapX * (cols - 1)) / cols);
+  const cellHeight = Math.max(1, (frame.height - gapY * (rows - 1)) / rows);
+
+  imageIds.forEach((imageId, index) => {
+    const row = Math.floor(index / cols);
+    const col = index % cols;
+    layouts.set(imageId, {
+      x: frame.x + col * (cellWidth + gapX),
+      y: frame.y + row * (cellHeight + gapY),
+      width: cellWidth,
+      height: cellHeight
+    });
+  });
+
+  return layouts;
+}
+
 export const StoryNode = memo(function StoryNode({ id, data }: NodeProps<StoryNodeData>) {
   const [isDragOver, setIsDragOver] = useState(false);
   const [editingBeatIndex, setEditingBeatIndex] = useState<number | null>(null);
@@ -127,14 +226,10 @@ export const StoryNode = memo(function StoryNode({ id, data }: NodeProps<StoryNo
   const flow = useReactFlow();
   const updateNodeInternals = useUpdateNodeInternals();
 
-  const assets = useGraphStore((state) => state.doc.assets);
   const updateBeatLine = useGraphStore((state) => state.updateBeatLine);
-  const removeBeatLine = useGraphStore((state) => state.removeBeatLine);
   const attachImagesToNode = useGraphStore((state) => state.attachImagesToNode);
-
-  const images = useMemo(
-    () => data.imageAssetIds.map((assetId) => assets[assetId]).filter(Boolean),
-    [data.imageAssetIds, assets]
+  const attachedImageCount = useGraphStore(
+    (state) => state.doc.nodes.filter((node) => node.type === "imageNode" && node.parentId === id).length
   );
 
   const importImagePaths = async (paths: string[]) => {
@@ -181,6 +276,58 @@ export const StoryNode = memo(function StoryNode({ id, data }: NodeProps<StoryNo
     scheduleNodeInternalsUpdate();
   }, [id, scheduleNodeInternalsUpdate]);
 
+  const syncAttachedImagesToFrame = useCallback(
+    (nodeSizeOverride?: { width: number; height: number }) => {
+      const nodeSurface = nodeSurfaceRef.current;
+      const state = useGraphStore.getState();
+      const node = state.doc.nodes.find((candidate) => candidate.id === id);
+      if (!node) return;
+
+      const nodeSize = nodeSizeOverride ?? readNodeSize(node);
+      const frame = readImageFrameRect(nodeSurface, nodeSize);
+      const attachedImageIds = readAttachedImageIds(state.doc.nodes, id);
+      const layouts = computeAttachedImageLayouts(attachedImageIds, frame);
+      let changed = false;
+
+      const nextNodes = state.doc.nodes.map((candidate) => {
+        const layout = layouts.get(candidate.id);
+        if (!layout) return candidate;
+        const currentSize = readNodeSize(candidate);
+        if (
+          candidate.position.x === layout.x &&
+          candidate.position.y === layout.y &&
+          currentSize.width === layout.width &&
+          currentSize.height === layout.height &&
+          candidate.draggable === false
+        ) {
+          return candidate;
+        }
+
+        changed = true;
+        return {
+          ...candidate,
+          position: { x: layout.x, y: layout.y },
+          draggable: false,
+          style: {
+            ...(candidate.style ?? {}),
+            width: layout.width,
+            height: layout.height
+          }
+        };
+      });
+
+      if (!changed) return;
+
+      useGraphStore.setState({
+        doc: {
+          ...state.doc,
+          nodes: nextNodes
+        }
+      });
+    },
+    [id]
+  );
+
   const resizeBeatField = useCallback(
     (element: HTMLTextAreaElement | null) => {
       if (!element) return;
@@ -196,12 +343,12 @@ export const StoryNode = memo(function StoryNode({ id, data }: NodeProps<StoryNo
   useEffect(() => {
     beatRefs.current.forEach((element) => resizeBeatField(element));
     growNodeToFitContent();
-  }, [data.beats, growNodeToFitContent, resizeBeatField]);
+    syncAttachedImagesToFrame();
+  }, [data.beats, growNodeToFitContent, resizeBeatField, syncAttachedImagesToFrame]);
 
   useEffect(() => {
-    growNodeToFitContent();
-    scheduleNodeInternalsUpdate();
-  }, [growNodeToFitContent, images.length, scheduleNodeInternalsUpdate]);
+    syncAttachedImagesToFrame();
+  }, [attachedImageCount, syncAttachedImagesToFrame]);
 
   useEffect(() => {
     if (editingBeatIndex === null) return;
@@ -214,7 +361,8 @@ export const StoryNode = memo(function StoryNode({ id, data }: NodeProps<StoryNo
 
   useEffect(() => {
     scheduleNodeInternalsUpdate();
-  }, [editingBeatIndex, scheduleNodeInternalsUpdate]);
+    syncAttachedImagesToFrame();
+  }, [editingBeatIndex, scheduleNodeInternalsUpdate, syncAttachedImagesToFrame]);
 
   useEffect(() => {
     return () => {
@@ -225,61 +373,126 @@ export const StoryNode = memo(function StoryNode({ id, data }: NodeProps<StoryNo
   }, []);
 
   const applyLiveResize = useCallback((next: NodeRectSnapshot) => {
-    useGraphStore.setState((state) => ({
-      doc: {
-        ...state.doc,
-        nodes: state.doc.nodes.map((node) => {
-          if (node.id !== id) return node;
-          return {
-            ...node,
-            position: { ...node.position, x: next.x },
-            style: {
-              ...(node.style ?? {}),
-              width: next.width,
-              height: next.height
+    const frame = readImageFrameRect(nodeSurfaceRef.current, { width: next.width, height: next.height });
+    useGraphStore.setState((state) => {
+      const attachedImageIds = readAttachedImageIds(state.doc.nodes, id);
+      const layouts = computeAttachedImageLayouts(attachedImageIds, frame);
+
+      return {
+        doc: {
+          ...state.doc,
+          nodes: state.doc.nodes.map((node) => {
+            if (node.id === id) {
+              return {
+                ...node,
+                position: { ...node.position, x: next.x },
+                style: {
+                  ...(node.style ?? {}),
+                  width: next.width,
+                  height: next.height
+                }
+              };
             }
-          };
-        })
-      }
-    }));
+
+            const layout = layouts.get(node.id);
+            if (layout) {
+              return {
+                ...node,
+                position: { x: layout.x, y: layout.y },
+                draggable: false,
+                style: {
+                  ...(node.style ?? {}),
+                  width: layout.width,
+                  height: layout.height
+                }
+              };
+            }
+
+            return node;
+          })
+        }
+      };
+    });
   }, [id]);
 
   const commitResize = useCallback((previous: NodeRectSnapshot, next: NodeRectSnapshot) => {
     if (previous.x === next.x && previous.width === next.width && previous.height === next.height) {
       return;
     }
+    const previousFrame = readImageFrameRect(nodeSurfaceRef.current, { width: previous.width, height: previous.height });
+    const nextFrame = readImageFrameRect(nodeSurfaceRef.current, { width: next.width, height: next.height });
 
     useGraphStore.getState().executeCommand({
       label: "Resize Node",
       redo: (doc) => ({
         ...doc,
-        nodes: doc.nodes.map((node) => {
-          if (node.id !== id) return node;
-          return {
-            ...node,
-            position: { ...node.position, x: next.x },
-            style: {
-              ...(node.style ?? {}),
-              width: next.width,
-              height: next.height
+        nodes: (() => {
+          const layouts = computeAttachedImageLayouts(readAttachedImageIds(doc.nodes, id), nextFrame);
+          return doc.nodes.map((node) => {
+            if (node.id === id) {
+              return {
+                ...node,
+                position: { ...node.position, x: next.x },
+                style: {
+                  ...(node.style ?? {}),
+                  width: next.width,
+                  height: next.height
+                }
+              };
             }
-          };
-        })
+
+            const layout = layouts.get(node.id);
+            if (layout) {
+              return {
+                ...node,
+                position: { x: layout.x, y: layout.y },
+                draggable: false,
+                style: {
+                  ...(node.style ?? {}),
+                  width: layout.width,
+                  height: layout.height
+                }
+              };
+            }
+
+            return node;
+          });
+        })()
       }),
       undo: (doc) => ({
         ...doc,
-        nodes: doc.nodes.map((node) => {
-          if (node.id !== id) return node;
-          return {
-            ...node,
-            position: { ...node.position, x: previous.x },
-            style: {
-              ...(node.style ?? {}),
-              width: previous.width,
-              height: previous.height
+        nodes: (() => {
+          const layouts = computeAttachedImageLayouts(readAttachedImageIds(doc.nodes, id), previousFrame);
+          return doc.nodes.map((node) => {
+            if (node.id === id) {
+              return {
+                ...node,
+                position: { ...node.position, x: previous.x },
+                style: {
+                  ...(node.style ?? {}),
+                  width: previous.width,
+                  height: previous.height
+                }
+              };
             }
-          };
-        })
+
+            const layout = layouts.get(node.id);
+            if (layout) {
+              return {
+                ...node,
+                position: { x: layout.x, y: layout.y },
+                draggable: false,
+                style: {
+                  ...(node.style ?? {}),
+                  width: layout.width,
+                  height: layout.height
+                }
+              };
+            }
+
+            return node;
+          });
+        })()
       })
     });
   }, [id]);
@@ -303,6 +516,7 @@ export const StoryNode = memo(function StoryNode({ id, data }: NodeProps<StoryNo
       width,
       height
     };
+    const beatMinimumHeight = readBeatTextMinimumHeight(nodeSurfaceRef.current);
 
     resizeSessionRef.current = {
       pointerId: event.pointerId,
@@ -314,7 +528,7 @@ export const StoryNode = memo(function StoryNode({ id, data }: NodeProps<StoryNo
       startHeight: height,
       zoom,
       minWidth: Math.min(MIN_NODE_WIDTH, width),
-      minHeight: Math.min(readBeatTextMinimumHeight(nodeSurfaceRef.current), height)
+      minHeight: Math.min(beatMinimumHeight, height)
     };
 
     const onPointerMove = (moveEvent: PointerEvent) => {
@@ -428,40 +642,9 @@ export const StoryNode = memo(function StoryNode({ id, data }: NodeProps<StoryNo
                   {line || `Beat ${index + 1}`}
                 </div>
               )}
-              <button
-                className="story-node__icon-button nodrag"
-                onClick={() => removeBeatLine(id, index)}
-                type="button"
-                title="Remove beat"
-                disabled={data.beats.length <= 1}
-              >
-                x
-              </button>
             </div>
           ))}
         </div>
-
-        {images.length > 0 ? (
-          <div className="story-node__images">
-            {images.map((asset) => (
-              <img
-                key={asset.id}
-                className="story-node__thumb"
-                src={asset.uri}
-                alt={asset.fileName}
-                draggable={false}
-                loading="lazy"
-                decoding="async"
-                onLoad={() => {
-                  // Images can change node height dynamically, so we refresh internals after each load.
-                  growNodeToFitContent();
-                  scheduleNodeInternalsUpdate();
-                }}
-              />
-            ))}
-          </div>
-        ) : null}
-
         <Handle className="story-handle story-handle--right" type="source" position={Position.Right} id="out" />
       </div>
       <button

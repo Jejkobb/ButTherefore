@@ -10,7 +10,16 @@ import {
 import { create } from "zustand";
 import { createEmptyProject } from "@/shared/types";
 import type { RuntimeStoryAsset } from "@/shared/types";
-import { documentToProject, projectToDocument, type GraphDocument, type StoryFlowEdge, type StoryFlowNode } from "@/renderer/domain/project";
+import {
+  documentToProject,
+  type ImageFlowNode,
+  projectToDocument,
+  type FlowNode,
+  type GraphDocument,
+  type PostItFlowNode,
+  type StoryFlowEdge,
+  type StoryFlowNode
+} from "@/renderer/domain/project";
 
 interface GraphCommand {
   label: string;
@@ -37,20 +46,26 @@ interface GraphStore {
   redo: () => void;
   canUndo: () => boolean;
   canRedo: () => boolean;
-  applyNodeChangesLive: (changes: NodeChange<StoryFlowNode>[]) => void;
+  applyNodeChangesLive: (changes: NodeChange<FlowNode>[]) => void;
   applyEdgeChangesLive: (changes: EdgeChange<StoryFlowEdge>[]) => void;
   setViewport: (viewport: GraphDocument["viewport"]) => void;
   createNode: (position: XYPosition) => void;
+  createPostItNode: (position: XYPosition) => void;
+  createImageNodes: (position: XYPosition, filePaths: string[]) => Promise<void>;
   createNodeFromConnection: (sourceNodeId: string, sourceHandleId: string | null, position: XYPosition) => void;
   connectNodes: (connection: Connection) => void;
   commitNodeMove: (previousPositions: Record<string, XYPosition>) => void;
   deleteSelection: () => void;
   updateNodeTitle: (nodeId: string, title: string) => void;
   updateBeatLine: (nodeId: string, index: number, value: string) => void;
+  updatePostItNote: (nodeId: string, note: string) => void;
   addBeatLine: (nodeId: string) => void;
   removeBeatLine: (nodeId: string, index: number) => void;
   toggleEdgeRelation: (edgeId: string) => void;
   attachImagesToNode: (nodeId: string, filePaths: string[]) => Promise<void>;
+  dockImageNodesToStoryNodes: (nodeIds: string[]) => void;
+  removeImageNode: (nodeId: string) => Promise<void>;
+  removeImageFromNode: (nodeId: string, assetId: string) => Promise<void>;
   newProject: () => Promise<void>;
   openProject: () => Promise<void>;
   saveProject: () => Promise<void>;
@@ -59,6 +74,8 @@ interface GraphStore {
 }
 
 const empty = createEmptyProject();
+const DEFAULT_IMAGE_NODE_WIDTH = 180;
+const DEFAULT_IMAGE_NODE_HEIGHT = 120;
 
 function createStarterNode(position: XYPosition = { x: 120, y: 120 }): StoryFlowNode {
   return {
@@ -76,6 +93,38 @@ function createStarterNode(position: XYPosition = { x: 120, y: 120 }): StoryFlow
   };
 }
 
+function createPostItNodeTemplate(position: XYPosition): PostItFlowNode {
+  return {
+    id: crypto.randomUUID(),
+    type: "postItNode",
+    position,
+    style: {
+      width: 280,
+      height: 260
+    },
+    data: {
+      note: ""
+    }
+  };
+}
+
+function createImageNodeTemplate(assetId: string, position: XYPosition, parentId?: string, draggable = true): ImageFlowNode {
+  return {
+    id: crypto.randomUUID(),
+    type: "imageNode",
+    position,
+    draggable,
+    ...(parentId ? { parentId, extent: "parent" as const } : {}),
+    style: {
+      width: DEFAULT_IMAGE_NODE_WIDTH,
+      height: DEFAULT_IMAGE_NODE_HEIGHT
+    },
+    data: {
+      assetId
+    }
+  };
+}
+
 function createInitialDocument(viewport: GraphDocument["viewport"] = empty.viewport): GraphDocument {
   return {
     nodes: [createStarterNode()],
@@ -87,11 +136,48 @@ function createInitialDocument(viewport: GraphDocument["viewport"] = empty.viewp
 
 const initialDoc: GraphDocument = createInitialDocument();
 
-function replaceNode(doc: GraphDocument, nodeId: string, updater: (node: StoryFlowNode) => StoryFlowNode): GraphDocument {
+function replaceNode(doc: GraphDocument, nodeId: string, updater: (node: FlowNode) => FlowNode): GraphDocument {
   return {
     ...doc,
     nodes: doc.nodes.map((node) => (node.id === nodeId ? updater(node) : node))
   };
+}
+
+function isStoryNode(node: FlowNode): node is StoryFlowNode {
+  return node.type === "storyNode";
+}
+
+function isPostItNode(node: FlowNode): node is PostItFlowNode {
+  return node.type === "postItNode";
+}
+
+function isImageNode(node: FlowNode): node is ImageFlowNode {
+  return node.type === "imageNode";
+}
+
+function readNodeSize(node: { width?: number; height?: number; style?: Record<string, unknown> }): { width: number; height: number } {
+  const styleWidth = typeof node.style?.width === "number" ? node.style.width : null;
+  const styleHeight = typeof node.style?.height === "number" ? node.style.height : null;
+  return {
+    width: styleWidth ?? (typeof node.width === "number" ? node.width : 0),
+    height: styleHeight ?? (typeof node.height === "number" ? node.height : 0)
+  };
+}
+
+function absoluteNodePosition(node: FlowNode, nodeById: Map<string, FlowNode>): XYPosition {
+  let x = node.position.x;
+  let y = node.position.y;
+  let parentId = node.parentId;
+
+  while (parentId) {
+    const parent = nodeById.get(parentId);
+    if (!parent) break;
+    x += parent.position.x;
+    y += parent.position.y;
+    parentId = parent.parentId;
+  }
+
+  return { x, y };
 }
 
 function edgeExists(doc: GraphDocument, connection: Connection): boolean {
@@ -228,9 +314,64 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
     });
   },
 
+  createPostItNode: (position) => {
+    const node = createPostItNodeTemplate(position);
+
+    get().executeCommand({
+      label: "Create Note",
+      redo: (doc) => ({ ...doc, nodes: [...doc.nodes, node] }),
+      undo: (doc) => ({ ...doc, nodes: doc.nodes.filter((candidate) => candidate.id !== node.id) })
+    });
+  },
+
+  createImageNodes: async (position, filePaths) => {
+    if (filePaths.length === 0) return;
+
+    const importedAssets: RuntimeStoryAsset[] = [];
+    for (const filePath of filePaths) {
+      const imported = await window.storyBridge.importAsset(filePath);
+      importedAssets.push(imported);
+    }
+
+    const importedAssetMap = importedAssets.reduce<Record<string, RuntimeStoryAsset>>((acc, asset) => {
+      acc[asset.id] = asset;
+      return acc;
+    }, {});
+    const imageNodes = importedAssets.map((asset, index) =>
+      createImageNodeTemplate(asset.id, {
+        x: position.x + index * 24,
+        y: position.y + index * 24
+      })
+    );
+
+    get().executeCommand({
+      label: "Add Images",
+      redo: (doc) => ({
+        ...doc,
+        assets: {
+          ...doc.assets,
+          ...importedAssetMap
+        },
+        nodes: [...doc.nodes, ...imageNodes]
+      }),
+      undo: (doc) => {
+        const nextAssets = { ...doc.assets };
+        for (const asset of importedAssets) {
+          delete nextAssets[asset.id];
+        }
+
+        return {
+          ...doc,
+          assets: nextAssets,
+          nodes: doc.nodes.filter((node) => !imageNodes.some((imageNode) => imageNode.id === node.id))
+        };
+      }
+    });
+  },
+
   createNodeFromConnection: (sourceNodeId, sourceHandleId, position) => {
-    const sourceNodeExists = get().doc.nodes.some((node) => node.id === sourceNodeId);
-    if (!sourceNodeExists) return;
+    const sourceNode = get().doc.nodes.find((node) => node.id === sourceNodeId);
+    if (!sourceNode || !isStoryNode(sourceNode)) return;
 
     const node = createStarterNode(position);
     const sourceSide = sourceHandleId === "in" || sourceHandleId === "out-left" ? "left" : "right";
@@ -264,6 +405,10 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
   connectNodes: (connection) => {
     if (!connection.source || !connection.target) return;
     if (edgeExists(get().doc, connection)) return;
+
+    const sourceNode = get().doc.nodes.find((node) => node.id === connection.source);
+    const targetNode = get().doc.nodes.find((node) => node.id === connection.target);
+    if (!sourceNode || !targetNode || !isStoryNode(sourceNode) || !isStoryNode(targetNode)) return;
 
     const edge: StoryFlowEdge = {
       id: crypto.randomUUID(),
@@ -348,7 +493,7 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
 
   updateNodeTitle: (nodeId, title) => {
     const current = get().doc.nodes.find((node) => node.id === nodeId);
-    if (!current || current.data.title === title) return;
+    if (!current || !isStoryNode(current) || current.data.title === title) return;
 
     const previous = current.data.title;
 
@@ -356,21 +501,27 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
       label: "Edit Node Title",
       mergeKey: `title:${nodeId}`,
       redo: (doc) =>
-        replaceNode(doc, nodeId, (node) => ({
-          ...node,
-          data: { ...node.data, title }
-        })),
+        replaceNode(doc, nodeId, (node) => {
+          if (!isStoryNode(node)) return node;
+          return {
+            ...node,
+            data: { ...node.data, title }
+          };
+        }),
       undo: (doc) =>
-        replaceNode(doc, nodeId, (node) => ({
-          ...node,
-          data: { ...node.data, title: previous }
-        }))
+        replaceNode(doc, nodeId, (node) => {
+          if (!isStoryNode(node)) return node;
+          return {
+            ...node,
+            data: { ...node.data, title: previous }
+          };
+        })
     });
   },
 
   updateBeatLine: (nodeId, index, value) => {
     const current = get().doc.nodes.find((node) => node.id === nodeId);
-    if (!current || current.data.beats[index] === value) return;
+    if (!current || !isStoryNode(current) || current.data.beats[index] === value) return;
 
     const previous = current.data.beats[index] ?? "";
 
@@ -379,12 +530,14 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
       mergeKey: `beat:${nodeId}:${index}`,
       redo: (doc) =>
         replaceNode(doc, nodeId, (node) => {
+          if (!isStoryNode(node)) return node;
           const beats = [...node.data.beats];
           beats[index] = value;
           return { ...node, data: { ...node.data, beats } };
         }),
       undo: (doc) =>
         replaceNode(doc, nodeId, (node) => {
+          if (!isStoryNode(node)) return node;
           const beats = [...node.data.beats];
           beats[index] = previous;
           return { ...node, data: { ...node.data, beats } };
@@ -392,43 +545,87 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
     });
   },
 
+  updatePostItNote: (nodeId, note) => {
+    const current = get().doc.nodes.find((node) => node.id === nodeId);
+    if (!current || !isPostItNode(current) || current.data.note === note) return;
+
+    const previous = current.data.note;
+
+    get().executeCommand({
+      label: "Edit Note",
+      mergeKey: `postit:${nodeId}`,
+      redo: (doc) =>
+        replaceNode(doc, nodeId, (node) => {
+          if (!isPostItNode(node)) return node;
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              note
+            }
+          };
+        }),
+      undo: (doc) =>
+        replaceNode(doc, nodeId, (node) => {
+          if (!isPostItNode(node)) return node;
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              note: previous
+            }
+          };
+        })
+    });
+  },
+
   addBeatLine: (nodeId) => {
     const current = get().doc.nodes.find((node) => node.id === nodeId);
-    if (!current) return;
+    if (!current || !isStoryNode(current)) return;
 
     get().executeCommand({
       label: "Add Beat",
       redo: (doc) =>
-        replaceNode(doc, nodeId, (node) => ({
-          ...node,
-          data: { ...node.data, beats: [...node.data.beats, ""] }
-        })),
+        replaceNode(doc, nodeId, (node) => {
+          if (!isStoryNode(node)) return node;
+          return {
+            ...node,
+            data: { ...node.data, beats: [...node.data.beats, ""] }
+          };
+        }),
       undo: (doc) =>
-        replaceNode(doc, nodeId, (node) => ({
-          ...node,
-          data: { ...node.data, beats: node.data.beats.slice(0, -1) }
-        }))
+        replaceNode(doc, nodeId, (node) => {
+          if (!isStoryNode(node)) return node;
+          return {
+            ...node,
+            data: { ...node.data, beats: node.data.beats.slice(0, -1) }
+          };
+        })
     });
   },
 
   removeBeatLine: (nodeId, index) => {
     const current = get().doc.nodes.find((node) => node.id === nodeId);
-    if (!current || current.data.beats.length <= 1 || index < 0 || index >= current.data.beats.length) return;
+    if (!current || !isStoryNode(current) || current.data.beats.length <= 1 || index < 0 || index >= current.data.beats.length) return;
 
     const removedValue = current.data.beats[index];
 
     get().executeCommand({
       label: "Remove Beat",
       redo: (doc) =>
-        replaceNode(doc, nodeId, (node) => ({
-          ...node,
-          data: {
-            ...node.data,
-            beats: node.data.beats.filter((_, beatIndex) => beatIndex !== index)
-          }
-        })),
+        replaceNode(doc, nodeId, (node) => {
+          if (!isStoryNode(node)) return node;
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              beats: node.data.beats.filter((_, beatIndex) => beatIndex !== index)
+            }
+          };
+        }),
       undo: (doc) =>
         replaceNode(doc, nodeId, (node) => {
+          if (!isStoryNode(node)) return node;
           const beats = [...node.data.beats];
           beats.splice(index, 0, removedValue);
           return {
@@ -470,7 +667,7 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
     if (filePaths.length === 0) return;
 
     const currentNode = get().doc.nodes.find((node) => node.id === nodeId);
-    if (!currentNode) return;
+    if (!currentNode || !isStoryNode(currentNode)) return;
 
     const importedAssets: RuntimeStoryAsset[] = [];
     for (const filePath of filePaths) {
@@ -483,26 +680,48 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
       acc[asset.id] = asset;
       return acc;
     }, {});
+    const imageNodes = imageAssetIds.map((assetId) => createImageNodeTemplate(assetId, { x: 0, y: 0 }, nodeId, false));
 
     get().executeCommand({
       label: "Attach Images",
-      redo: (doc) => ({
-        ...doc,
-        assets: {
-          ...doc.assets,
-          ...importedAssetMap
-        },
-        nodes: doc.nodes.map((node) => {
-          if (node.id !== nodeId) return node;
+      redo: (doc) => {
+        const targetStory = doc.nodes.find((node): node is StoryFlowNode => node.id === nodeId && isStoryNode(node));
+        const targetStorySize = targetStory ? readNodeSize(targetStory) : { width: 0, height: 0 };
+        const targetWidth = Math.max(targetStorySize.width, DEFAULT_IMAGE_NODE_WIDTH);
+        const targetHeight = Math.max(targetStorySize.height, DEFAULT_IMAGE_NODE_HEIGHT);
+
+        const nextNodes = doc.nodes.map((node) => {
+          if (node.id !== nodeId || !isStoryNode(node)) return node;
           return {
             ...node,
-            data: {
-              ...node.data,
-              imageAssetIds: [...node.data.imageAssetIds, ...imageAssetIds]
+            style: {
+              ...(node.style ?? {}),
+              width: targetWidth,
+              height: targetHeight
             }
           };
-        })
-      }),
+        });
+
+        const normalizedImageNodes = imageNodes.map((node) => ({
+          ...node,
+          position: { x: 0, y: 0 },
+          draggable: false,
+          style: {
+            ...(node.style ?? {}),
+            width: targetWidth,
+            height: targetHeight
+          }
+        }));
+
+        return {
+          ...doc,
+          assets: {
+            ...doc.assets,
+            ...importedAssetMap
+          },
+          nodes: [...nextNodes, ...normalizedImageNodes]
+        };
+      },
       undo: (doc) => {
         const nextAssets = { ...doc.assets };
         for (const assetId of imageAssetIds) {
@@ -512,19 +731,205 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
         return {
           ...doc,
           assets: nextAssets,
-          nodes: doc.nodes.map((node) => {
-            if (node.id !== nodeId) return node;
-            return {
-              ...node,
-              data: {
-                ...node.data,
-                imageAssetIds: node.data.imageAssetIds.filter((assetId) => !imageAssetIds.includes(assetId))
-              }
-            };
-          })
+          nodes: doc.nodes.filter((node) => !imageNodes.some((imageNode) => imageNode.id === node.id))
         };
       }
     });
+  },
+
+  dockImageNodesToStoryNodes: (nodeIds) => {
+    if (nodeIds.length === 0) return;
+    const movedIds = new Set(nodeIds);
+    const currentDoc = get().doc;
+    const nodeById = new Map(currentDoc.nodes.map((node) => [node.id, node]));
+    const storyNodes = currentDoc.nodes.filter((node): node is StoryFlowNode => isStoryNode(node));
+    const storySizeOverrides = new Map<string, { width: number; height: number }>();
+    let changed = false;
+
+    const nextNodes = currentDoc.nodes.map((node) => {
+      if (!movedIds.has(node.id) || !isImageNode(node)) return node;
+
+      const baseSize = readNodeSize(node);
+      const imageSize = {
+        width: baseSize.width > 0 ? baseSize.width : DEFAULT_IMAGE_NODE_WIDTH,
+        height: baseSize.height > 0 ? baseSize.height : DEFAULT_IMAGE_NODE_HEIGHT
+      };
+      const absolute = absoluteNodePosition(node, nodeById);
+      const centerX = absolute.x + imageSize.width / 2;
+      const centerY = absolute.y + imageSize.height / 2;
+
+      let bestStory: StoryFlowNode | null = null;
+      let bestDistance = Number.POSITIVE_INFINITY;
+
+      for (const story of storyNodes) {
+        const storyAbsolute = absoluteNodePosition(story, nodeById);
+        const storySize = storySizeOverrides.get(story.id) ?? readNodeSize(story);
+        const left = storyAbsolute.x;
+        const top = storyAbsolute.y;
+        const right = storyAbsolute.x + storySize.width;
+        const bottom = storyAbsolute.y + storySize.height;
+        const insideBounds = centerX >= left && centerX <= right && centerY >= top && centerY <= bottom;
+        if (!insideBounds) continue;
+
+        const storyCenterX = storyAbsolute.x + storySize.width / 2;
+        const storyCenterY = storyAbsolute.y + storySize.height / 2;
+        const distance = Math.hypot(storyCenterX - centerX, storyCenterY - centerY);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          bestStory = story;
+        }
+      }
+
+      if (!bestStory) {
+        if (!node.parentId) return node;
+
+        changed = true;
+        return {
+          ...node,
+          parentId: undefined,
+          extent: undefined,
+          draggable: true,
+          position: absolute
+        };
+      }
+
+      const storySize = storySizeOverrides.get(bestStory.id) ?? readNodeSize(bestStory);
+      const requiredWidth = Math.max(storySize.width, imageSize.width);
+      const requiredHeight = Math.max(storySize.height, imageSize.height);
+      if (requiredWidth > storySize.width || requiredHeight > storySize.height) {
+        storySizeOverrides.set(bestStory.id, {
+          width: requiredWidth,
+          height: requiredHeight
+        });
+      }
+
+      if (
+        node.parentId !== bestStory.id ||
+        node.extent !== "parent" ||
+        node.position.x !== 0 ||
+        node.position.y !== 0 ||
+        node.draggable !== false
+      ) {
+        changed = true;
+      }
+
+      return {
+        ...node,
+        parentId: bestStory.id,
+        extent: "parent",
+        draggable: false,
+        position: { x: 0, y: 0 }
+      };
+    });
+
+    const nextWithExpandedStories = nextNodes.map((node) => {
+      if (!isStoryNode(node)) return node;
+      const override = storySizeOverrides.get(node.id);
+      if (!override) return node;
+
+      const currentSize = readNodeSize(node);
+      if (currentSize.width !== override.width || currentSize.height !== override.height) {
+        changed = true;
+      }
+
+      return {
+        ...node,
+        style: {
+          ...(node.style ?? {}),
+          width: override.width,
+          height: override.height
+        }
+      };
+    });
+
+    const storySizeById = nextWithExpandedStories.reduce<Map<string, { width: number; height: number }>>((acc, node) => {
+      if (isStoryNode(node)) {
+        acc.set(node.id, readNodeSize(node));
+      }
+      return acc;
+    }, new Map());
+
+    const nextWithLockedParentedImages = nextWithExpandedStories.map((node) => {
+      if (!isImageNode(node) || !node.parentId) return node;
+      const parentSize = storySizeById.get(node.parentId);
+      if (!parentSize) return node;
+
+      const size = readNodeSize(node);
+      if (
+        node.position.x !== 0 ||
+        node.position.y !== 0 ||
+        node.draggable !== false ||
+        size.width !== parentSize.width ||
+        size.height !== parentSize.height
+      ) {
+        changed = true;
+      }
+
+      return {
+        ...node,
+        position: { x: 0, y: 0 },
+        draggable: false,
+        style: {
+          ...(node.style ?? {}),
+          width: parentSize.width,
+          height: parentSize.height
+        }
+      };
+    });
+
+    if (!changed) return;
+
+    const nextDoc: GraphDocument = {
+      ...currentDoc,
+      nodes: nextWithLockedParentedImages
+    };
+
+    get().executeCommand({
+      label: "Dock Images",
+      redo: () => nextDoc,
+      undo: () => currentDoc
+    });
+  },
+
+  removeImageNode: async (nodeId) => {
+    const { doc } = get();
+    const target = doc.nodes.find((node): node is ImageFlowNode => node.id === nodeId && isImageNode(node));
+    if (!target) return;
+
+    const assetId = target.data.assetId;
+    const targetAsset = doc.assets[assetId];
+    const remainingImageNodes = doc.nodes.filter((node): node is ImageFlowNode => node.id !== nodeId && isImageNode(node));
+    const stillReferenced = remainingImageNodes.some((node) => node.data.assetId === assetId);
+
+    const nextAssets = { ...doc.assets };
+    if (!stillReferenced) {
+      delete nextAssets[assetId];
+    }
+
+    set({
+      doc: {
+        ...doc,
+        nodes: doc.nodes.filter((node) => node.id !== nodeId),
+        assets: nextAssets
+      },
+      dirty: true
+    });
+
+    if (!stillReferenced && targetAsset) {
+      try {
+        await window.storyBridge.deleteAsset(targetAsset.id, targetAsset.relativePath);
+      } catch (error) {
+        console.error("Failed to delete asset file", error);
+      }
+    }
+  },
+
+  removeImageFromNode: async (nodeId, assetId) => {
+    const target = get().doc.nodes.find(
+      (node): node is ImageFlowNode => isImageNode(node) && node.data.assetId === assetId && (!nodeId || node.parentId === nodeId)
+    );
+    if (!target) return;
+    await get().removeImageNode(target.id);
   },
 
   newProject: async () => {

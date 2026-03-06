@@ -44,6 +44,17 @@ function projectAssetsDir(projectPath: string): string {
   return path.join(path.dirname(projectPath), `${base}.assets`);
 }
 
+function resolveWorkspaceAssetPath(relativePath: string): string {
+  const root = path.resolve(workspaceAssetsDir);
+  const target = path.resolve(root, relativePath);
+
+  if (!target.startsWith(root + path.sep)) {
+    throw new Error("Invalid asset path.");
+  }
+
+  return target;
+}
+
 function detectMimeType(filePath: string): string {
   const ext = path.extname(filePath).toLowerCase();
   if (ext === ".png") return "image/png";
@@ -189,6 +200,12 @@ function registerIpc(): void {
       absolutePath: targetPath,
       uri: buildAssetUri(assetId)
     };
+  });
+
+  ipcMain.handle("project:deleteAsset", async (_event, assetId: string, relativePath: string): Promise<void> => {
+    const targetPath = resolveWorkspaceAssetPath(relativePath);
+    assetPathIndex.delete(assetId);
+    await fs.rm(targetPath, { force: true });
   });
 
   ipcMain.handle("project:pickImages", async (): Promise<string[]> => {

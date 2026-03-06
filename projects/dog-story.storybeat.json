@@ -3,88 +3,168 @@
   "meta": {
     "name": "Untitled Project",
     "createdAt": "2026-03-05T22:16:15.814Z",
-    "updatedAt": "2026-03-05T22:48:26.201Z"
+    "updatedAt": "2026-03-06T15:04:10.438Z"
   },
   "nodes": [
     {
       "id": "27cbe178-aa5e-4e4d-8b32-dd7b5d19eff1",
+      "type": "storyNode",
       "position": {
-        "x": -753.4507910772891,
-        "y": 257.73655537541015
+        "x": -873.7450507327533,
+        "y": 224.49735204955817
       },
       "size": {
-        "width": 423,
-        "height": 353
+        "width": 474.83204020972886,
+        "height": 344.3636363636362
       },
       "data": {
         "title": "Story Beat",
         "beats": [
           "Two dogs are hanging out"
         ],
-        "imageAssetIds": [
-          "797053af-3a91-44a2-9120-46d5004f3356",
-          "7f9a398e-3441-4ca2-962c-3a22f81767f0"
-        ]
+        "imageAssetIds": []
+      }
+    },
+    {
+      "id": "596b7a8f-19d2-4a11-86c0-97a9714d2322",
+      "type": "imageNode",
+      "position": {
+        "x": 14,
+        "y": 96
+      },
+      "size": {
+        "width": 179.99999999999997,
+        "height": 225.09090909090895
+      },
+      "parentId": "27cbe178-aa5e-4e4d-8b32-dd7b5d19eff1",
+      "extent": "parent",
+      "data": {
+        "assetId": "797053af-3a91-44a2-9120-46d5004f3356"
+      }
+    },
+    {
+      "id": "e9c7cc24-fd5b-46c2-8e68-f1d26be5e7e1",
+      "type": "imageNode",
+      "position": {
+        "x": 226.21417772148266,
+        "y": 80.1070888607415
+      },
+      "size": {
+        "width": 192.7272727272727,
+        "height": 242.3636363636362
+      },
+      "parentId": "27cbe178-aa5e-4e4d-8b32-dd7b5d19eff1",
+      "extent": "parent",
+      "data": {
+        "assetId": "7f9a398e-3441-4ca2-962c-3a22f81767f0"
       }
     },
     {
       "id": "91d79398-c192-4375-bb74-2b84061dd3dc",
+      "type": "storyNode",
       "position": {
-        "x": -163.73110750820507,
-        "y": 254.3318101414504
+        "x": -275.05586031686244,
+        "y": 192.01621950551294
       },
       "size": {
-        "width": 226,
-        "height": 565
+        "width": 320,
+        "height": 387.44462446732916
       },
       "data": {
         "title": "Story Beat",
         "beats": [
           "Dog #2 starts sneezing"
         ],
-        "imageAssetIds": [
-          "6bf0f8b5-07cb-4d59-86cc-a0ee53b8179f"
-        ]
+        "imageAssetIds": []
+      }
+    },
+    {
+      "id": "a379e69b-71eb-48cf-8ae7-ccf60014a799",
+      "type": "imageNode",
+      "position": {
+        "x": 53.59399385495132,
+        "y": 85.56163431528688
+      },
+      "size": {
+        "width": 228.28774263534874,
+        "height": 278.1594688839011
+      },
+      "parentId": "91d79398-c192-4375-bb74-2b84061dd3dc",
+      "extent": "parent",
+      "data": {
+        "assetId": "6bf0f8b5-07cb-4d59-86cc-a0ee53b8179f"
       }
     },
     {
       "id": "6f794a5a-397e-468c-ad4d-469558b9ff3f",
+      "type": "storyNode",
       "position": {
-        "x": 203.13560263402098,
-        "y": 220.09526665839775
+        "x": 130.32591915834524,
+        "y": 133.04021032878558
       },
       "size": {
-        "width": 288,
-        "height": 527
+        "width": 326.3312577636972,
+        "height": 459.981423938285
       },
       "data": {
         "title": "Story Beat",
         "beats": [
           "Mr Doctor Dog comes to the rescue\n\nDoctor Dog says \"You need to go see a real doctor\""
         ],
-        "imageAssetIds": [
-          "8a6272e5-7348-4f23-94d8-8d9fdd7071c4"
-        ]
+        "imageAssetIds": []
+      }
+    },
+    {
+      "id": "e724e025-3310-4add-8ce7-4fc951f8339d",
+      "type": "imageNode",
+      "position": {
+        "x": 51.987660943830804,
+        "y": 130.82202253184494
+      },
+      "size": {
+        "width": 208.5643106217392,
+        "height": 276.4413894831964
+      },
+      "parentId": "6f794a5a-397e-468c-ad4d-469558b9ff3f",
+      "extent": "parent",
+      "data": {
+        "assetId": "8a6272e5-7348-4f23-94d8-8d9fdd7071c4"
       }
     },
     {
       "id": "59b4f004-f3c0-49d8-975c-59a89f835beb",
+      "type": "storyNode",
       "position": {
-        "x": 673.984822801602,
-        "y": 194.1022683627864
+        "x": 551.1396098980115,
+        "y": 134.69790765332374
       },
       "size": {
-        "width": 460,
-        "height": 657
+        "width": 359.1898471011753,
+        "height": 444.17133851692165
       },
       "data": {
         "title": "Story Beat",
         "beats": [
           "Before Doctor Dog can call an ambulance, Dog #2 collapses to the floor."
         ],
-        "imageAssetIds": [
-          "d3904131-95cd-47cf-88ac-ed56840de6eb"
-        ]
+        "imageAssetIds": []
+      }
+    },
+    {
+      "id": "edf34853-526f-4d06-993a-fd056e9e3464",
+      "type": "imageNode",
+      "position": {
+        "x": 25.079734441950677,
+        "y": 103.91409602996481
+      },
+      "size": {
+        "width": 311.44755901128104,
+        "height": 309.68059280904845
+      },
+      "parentId": "59b4f004-f3c0-49d8-975c-59a89f835beb",
+      "extent": "parent",
+      "data": {
+        "assetId": "d3904131-95cd-47cf-88ac-ed56840de6eb"
       }
     }
   ],
@@ -153,8 +233,8 @@
     }
   ],
   "viewport": {
-    "x": 374.54243036902335,
-    "y": -21.327566651552218,
-    "zoom": 0.9576056196257373
+    "x": 695.2373124323774,
+    "y": 234.56851483565612,
+    "zoom": 0.55
   }
 }

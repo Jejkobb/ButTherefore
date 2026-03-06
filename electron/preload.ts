@@ -9,6 +9,7 @@ const bridge: StoryBridge = {
   saveProjectAs: (project: StoryProjectFile) => ipcRenderer.invoke("project:saveAs", project),
   pickImageFiles: () => ipcRenderer.invoke("project:pickImages"),
   importAsset: (sourcePath: string) => ipcRenderer.invoke("project:importAsset", sourcePath),
+  deleteAsset: (assetId: string, relativePath: string) => ipcRenderer.invoke("project:deleteAsset", assetId, relativePath),
   autosaveProject: (project: StoryProjectFile) => ipcRenderer.invoke("project:autosave", project)
 };
 

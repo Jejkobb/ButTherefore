@@ -1,6 +1,7 @@
 export const STORY_SCHEMA_VERSION = 1 as const;
 
 export type RelationType = "BUT" | "THEREFORE";
+export type StoryNodeType = "storyNode" | "postItNode" | "imageNode";
 
 export interface StoryAsset {
   id: string;
@@ -20,11 +21,22 @@ export interface StoryNodeData {
   imageAssetIds: string[];
 }
 
+export interface PostItNodeData {
+  note: string;
+}
+
+export interface ImageNodeData {
+  assetId: string;
+}
+
 export interface StoryNodeModel {
   id: string;
+  type?: StoryNodeType;
   position: { x: number; y: number };
   size?: { width: number; height: number };
-  data: StoryNodeData;
+  parentId?: string;
+  extent?: "parent";
+  data: StoryNodeData | PostItNodeData | ImageNodeData;
 }
 
 export interface StoryEdgeModel {

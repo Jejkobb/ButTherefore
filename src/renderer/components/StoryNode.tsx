@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
-import { Handle, Position, useUpdateNodeInternals, type NodeProps } from "@xyflow/react";
+import { Handle, Position, useReactFlow, useUpdateNodeInternals, type NodeProps } from "@xyflow/react";
 import type { StoryNodeData } from "@/shared/types";
 import { useGraphStore } from "@/renderer/store/useGraphStore";
 
@@ -49,7 +49,7 @@ function extractDroppedPaths(event: DragEvent<HTMLDivElement>): string[] {
   return Array.from(paths);
 }
 
-const MIN_NODE_WIDTH = 80;
+const MIN_NODE_WIDTH = 320;
 const MIN_NODE_HEIGHT = 60;
 
 type ResizeCorner = "bl" | "br";
@@ -62,6 +62,9 @@ interface ResizeSession {
   startNodeX: number;
   startWidth: number;
   startHeight: number;
+  zoom: number;
+  minWidth: number;
+  minHeight: number;
 }
 
 interface NodeRectSnapshot {
@@ -73,17 +76,55 @@ interface NodeRectSnapshot {
 function readNodeSize(node: { width?: number; height?: number; style?: Record<string, unknown> }): { width: number; height: number } {
   const styleWidth = typeof node.style?.width === "number" ? node.style.width : null;
   const styleHeight = typeof node.style?.height === "number" ? node.style.height : null;
-  const width = styleWidth ?? (typeof node.width === "number" ? node.width : 320);
-  const height = styleHeight ?? (typeof node.height === "number" ? node.height : 240);
+  const width = styleWidth ?? (typeof node.width === "number" ? node.width : MIN_NODE_WIDTH);
+  const height = styleHeight ?? (typeof node.height === "number" ? node.height : MIN_NODE_HEIGHT);
   return { width, height };
+}
+
+function parsePixels(value: string): number {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function readNodeContentRequiredHeight(nodeSurface: HTMLDivElement | null): number {
+  if (!nodeSurface) return MIN_NODE_HEIGHT;
+
+  const beatsContainer = nodeSurface.querySelector<HTMLElement>(".story-node__beats");
+  const imagesContainer = nodeSurface.querySelector<HTMLElement>(".story-node__images");
+
+  const nodeStyles = window.getComputedStyle(nodeSurface);
+  const paddingTop = parsePixels(nodeStyles.paddingTop);
+  const paddingBottom = parsePixels(nodeStyles.paddingBottom);
+  const rowGap = parsePixels(nodeStyles.rowGap || nodeStyles.gap);
+
+  const beatsHeight = beatsContainer ? beatsContainer.scrollHeight : 0;
+  const imagesHeight = imagesContainer ? imagesContainer.scrollHeight : 0;
+  const gapHeight = beatsContainer && imagesContainer ? rowGap : 0;
+
+  return Math.ceil(Math.max(MIN_NODE_HEIGHT, beatsHeight + imagesHeight + gapHeight + paddingTop + paddingBottom));
+}
+
+function readBeatTextMinimumHeight(nodeSurface: HTMLDivElement | null): number {
+  if (!nodeSurface) return MIN_NODE_HEIGHT;
+
+  const beatsContainer = nodeSurface.querySelector<HTMLElement>(".story-node__beats");
+  if (!beatsContainer) return MIN_NODE_HEIGHT;
+
+  const nodeStyles = window.getComputedStyle(nodeSurface);
+  const paddingTop = parsePixels(nodeStyles.paddingTop);
+  const paddingBottom = parsePixels(nodeStyles.paddingBottom);
+
+  return Math.ceil(beatsContainer.scrollHeight + paddingTop + paddingBottom);
 }
 
 export const StoryNode = memo(function StoryNode({ id, data }: NodeProps<StoryNodeData>) {
   const [isDragOver, setIsDragOver] = useState(false);
   const [editingBeatIndex, setEditingBeatIndex] = useState<number | null>(null);
   const beatRefs = useRef<Map<number, HTMLTextAreaElement>>(new Map());
+  const nodeSurfaceRef = useRef<HTMLDivElement | null>(null);
   const pendingInternalsFrame = useRef<number | null>(null);
   const resizeSessionRef = useRef<ResizeSession | null>(null);
+  const flow = useReactFlow();
   const updateNodeInternals = useUpdateNodeInternals();
 
   const assets = useGraphStore((state) => state.doc.assets);
@@ -110,6 +151,36 @@ export const StoryNode = memo(function StoryNode({ id, data }: NodeProps<StoryNo
     });
   }, [id, updateNodeInternals]);
 
+  const growNodeToFitContent = useCallback(() => {
+    const nodeSurface = nodeSurfaceRef.current;
+    if (!nodeSurface) return;
+
+    const requiredHeight = readNodeContentRequiredHeight(nodeSurface);
+    const node = useGraphStore.getState().doc.nodes.find((candidate) => candidate.id === id);
+    if (!node) return;
+
+    const { height } = readNodeSize(node);
+    if (requiredHeight <= height) return;
+
+    useGraphStore.setState((state) => ({
+      doc: {
+        ...state.doc,
+        nodes: state.doc.nodes.map((candidate) => {
+          if (candidate.id !== id) return candidate;
+          return {
+            ...candidate,
+            style: {
+              ...(candidate.style ?? {}),
+              height: requiredHeight
+            }
+          };
+        })
+      }
+    }));
+
+    scheduleNodeInternalsUpdate();
+  }, [id, scheduleNodeInternalsUpdate]);
+
   const resizeBeatField = useCallback(
     (element: HTMLTextAreaElement | null) => {
       if (!element) return;
@@ -124,7 +195,13 @@ export const StoryNode = memo(function StoryNode({ id, data }: NodeProps<StoryNo
 
   useEffect(() => {
     beatRefs.current.forEach((element) => resizeBeatField(element));
-  }, [data.beats, resizeBeatField]);
+    growNodeToFitContent();
+  }, [data.beats, growNodeToFitContent, resizeBeatField]);
+
+  useEffect(() => {
+    growNodeToFitContent();
+    scheduleNodeInternalsUpdate();
+  }, [growNodeToFitContent, images.length, scheduleNodeInternalsUpdate]);
 
   useEffect(() => {
     if (editingBeatIndex === null) return;
@@ -214,7 +291,13 @@ export const StoryNode = memo(function StoryNode({ id, data }: NodeProps<StoryNo
     const node = useGraphStore.getState().doc.nodes.find((candidate) => candidate.id === id);
     if (!node) return;
 
-    const { width, height } = readNodeSize(node);
+    const zoom = Math.max(flow.getZoom(), 0.01);
+    const measuredRect = nodeSurfaceRef.current?.getBoundingClientRect();
+    const measuredWidth = measuredRect ? measuredRect.width / zoom : null;
+    const measuredHeight = measuredRect ? measuredRect.height / zoom : null;
+    const fallbackSize = readNodeSize(node);
+    const width = measuredWidth ?? fallbackSize.width;
+    const height = measuredHeight ?? fallbackSize.height;
     const start: NodeRectSnapshot = {
       x: node.position.x,
       width,
@@ -228,24 +311,27 @@ export const StoryNode = memo(function StoryNode({ id, data }: NodeProps<StoryNo
       startClientY: event.clientY,
       startNodeX: node.position.x,
       startWidth: width,
-      startHeight: height
+      startHeight: height,
+      zoom,
+      minWidth: Math.min(MIN_NODE_WIDTH, width),
+      minHeight: Math.min(readBeatTextMinimumHeight(nodeSurfaceRef.current), height)
     };
 
     const onPointerMove = (moveEvent: PointerEvent) => {
       const session = resizeSessionRef.current;
       if (!session || moveEvent.pointerId !== session.pointerId) return;
 
-      const dx = moveEvent.clientX - session.startClientX;
-      const dy = moveEvent.clientY - session.startClientY;
+      const dx = (moveEvent.clientX - session.startClientX) / session.zoom;
+      const dy = (moveEvent.clientY - session.startClientY) / session.zoom;
 
       let nextWidth = session.startWidth;
-      let nextHeight = Math.max(MIN_NODE_HEIGHT, session.startHeight + dy);
+      let nextHeight = Math.max(session.minHeight, session.startHeight + dy);
       let nextX = session.startNodeX;
 
       if (session.corner === "br") {
-        nextWidth = Math.max(MIN_NODE_WIDTH, session.startWidth + dx);
+        nextWidth = Math.max(session.minWidth, session.startWidth + dx);
       } else {
-        nextWidth = Math.max(MIN_NODE_WIDTH, session.startWidth - dx);
+        nextWidth = Math.max(session.minWidth, session.startWidth - dx);
         nextX = session.startNodeX + (session.startWidth - nextWidth);
       }
 
@@ -278,7 +364,7 @@ export const StoryNode = memo(function StoryNode({ id, data }: NodeProps<StoryNo
     window.addEventListener("pointermove", onPointerMove);
     window.addEventListener("pointerup", stopResize);
     window.addEventListener("pointercancel", stopResize);
-  }, [applyLiveResize, commitResize, id, scheduleNodeInternalsUpdate]);
+  }, [applyLiveResize, commitResize, flow, id, scheduleNodeInternalsUpdate]);
 
   return (
     <div
@@ -295,7 +381,7 @@ export const StoryNode = memo(function StoryNode({ id, data }: NodeProps<StoryNo
         void importImagePaths(extractDroppedPaths(event));
       }}
     >
-      <div className="story-node">
+      <div className="story-node" ref={nodeSurfaceRef}>
         <div className="story-node__resize-zone story-node__resize-zone--bl nodrag nopan" onPointerDown={(event) => startResize(event, "bl")} />
         <div className="story-node__resize-zone story-node__resize-zone--br nodrag nopan" onPointerDown={(event) => startResize(event, "br")} />
         <Handle className="story-handle story-handle--left" type="source" position={Position.Left} id="in" />
@@ -308,7 +394,10 @@ export const StoryNode = memo(function StoryNode({ id, data }: NodeProps<StoryNo
                   className="story-node__beat nodrag"
                   value={line}
                   onChange={(event) => updateBeatLine(id, index, event.target.value)}
-                  onInput={(event) => resizeBeatField(event.currentTarget)}
+                  onInput={(event) => {
+                    resizeBeatField(event.currentTarget);
+                    growNodeToFitContent();
+                  }}
                   onBlur={() => setEditingBeatIndex((current) => (current === index ? null : current))}
                   onKeyDown={(event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
                     if (event.key === "Escape") {
@@ -365,6 +454,7 @@ export const StoryNode = memo(function StoryNode({ id, data }: NodeProps<StoryNo
                 decoding="async"
                 onLoad={() => {
                   // Images can change node height dynamically, so we refresh internals after each load.
+                  growNodeToFitContent();
                   scheduleNodeInternalsUpdate();
                 }}
               />
@@ -372,21 +462,20 @@ export const StoryNode = memo(function StoryNode({ id, data }: NodeProps<StoryNo
           </div>
         ) : null}
 
-        <div className="story-node__image-action">
-          <button
-            className="story-node__secondary nodrag"
-            onClick={async () => {
-              const filePaths = await window.storyBridge.pickImageFiles();
-              await importImagePaths(filePaths);
-            }}
-            type="button"
-          >
-            Add Image
-          </button>
-        </div>
-
         <Handle className="story-handle story-handle--right" type="source" position={Position.Right} id="out" />
       </div>
+      <button
+        className="story-node__image-fab nodrag nopan"
+        onClick={async () => {
+          const filePaths = await window.storyBridge.pickImageFiles();
+          await importImagePaths(filePaths);
+        }}
+        type="button"
+        aria-label="Add image"
+        title="Add image"
+      >
+        +
+      </button>
     </div>
   );
 });

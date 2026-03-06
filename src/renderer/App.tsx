@@ -5,6 +5,7 @@ import {
   ConnectionMode,
   ConnectionLineType,
   Controls,
+  SelectionMode,
   type FinalConnectionState,
   MiniMap,
   ReactFlow,
@@ -87,6 +88,15 @@ function Editor() {
     });
     createNode(center);
   }, [createNode, flow]);
+
+  const frameAllNodes = useCallback(() => {
+    if (useGraphStore.getState().doc.nodes.length === 0) return;
+    void flow.fitView({
+      padding: 0.22,
+      duration: 180,
+      includeHiddenNodes: true
+    });
+  }, [flow]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -188,6 +198,12 @@ function Editor() {
 
       if (targetTyping) return;
 
+      if (!modKey && event.key === "Home") {
+        event.preventDefault();
+        frameAllNodes();
+        return;
+      }
+
       if (!modKey && event.key.toLowerCase() === "n") {
         event.preventDefault();
         createNodeAtViewportCenter();
@@ -202,7 +218,7 @@ function Editor() {
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [createNodeAtViewportCenter, deleteSelection, openProject, redo, saveProject, undo]);
+  }, [createNodeAtViewportCenter, deleteSelection, frameAllNodes, openProject, redo, saveProject, undo]);
 
   return (
     <div className="app-shell">
@@ -238,6 +254,9 @@ function Editor() {
           onNodeDragStop={onNodeDragStop}
           connectionMode={ConnectionMode.Loose}
           connectionLineType={ConnectionLineType.Bezier}
+          panOnDrag={[1]}
+          selectionOnDrag
+          selectionMode={SelectionMode.Partial}
           deleteKeyCode={null}
           snapToGrid={false}
           minZoom={0.25}

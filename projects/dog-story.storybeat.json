@@ -3,19 +3,19 @@
   "meta": {
     "name": "Untitled Project",
     "createdAt": "2026-03-05T22:16:15.814Z",
-    "updatedAt": "2026-03-06T15:04:10.438Z"
+    "updatedAt": "2026-03-06T21:02:43.428Z"
   },
   "nodes": [
     {
       "id": "27cbe178-aa5e-4e4d-8b32-dd7b5d19eff1",
       "type": "storyNode",
       "position": {
-        "x": -873.7450507327533,
-        "y": 224.49735204955817
+        "x": -825.7629448864661,
+        "y": 154.92329857244192
       },
       "size": {
-        "width": 474.83204020972886,
-        "height": 344.3636363636362
+        "width": 344.0527701612598,
+        "height": 411.53280476430723
       },
       "data": {
         "title": "Story Beat",
@@ -26,32 +26,15 @@
       }
     },
     {
-      "id": "596b7a8f-19d2-4a11-86c0-97a9714d2322",
-      "type": "imageNode",
-      "position": {
-        "x": 14,
-        "y": 96
-      },
-      "size": {
-        "width": 179.99999999999997,
-        "height": 225.09090909090895
-      },
-      "parentId": "27cbe178-aa5e-4e4d-8b32-dd7b5d19eff1",
-      "extent": "parent",
-      "data": {
-        "assetId": "797053af-3a91-44a2-9120-46d5004f3356"
-      }
-    },
-    {
       "id": "e9c7cc24-fd5b-46c2-8e68-f1d26be5e7e1",
       "type": "imageNode",
       "position": {
-        "x": 226.21417772148266,
-        "y": 80.1070888607415
+        "x": 10,
+        "y": 54
       },
       "size": {
-        "width": 192.7272727272727,
-        "height": 242.3636363636362
+        "width": 324.0527701612598,
+        "height": 335.53280476430723
       },
       "parentId": "27cbe178-aa5e-4e4d-8b32-dd7b5d19eff1",
       "extent": "parent",
@@ -63,12 +46,12 @@
       "id": "91d79398-c192-4375-bb74-2b84061dd3dc",
       "type": "storyNode",
       "position": {
-        "x": -275.05586031686244,
-        "y": 192.01621950551294
+        "x": -386.6142564094799,
+        "y": 172.82337716699817
       },
       "size": {
-        "width": 320,
-        "height": 387.44462446732916
+        "width": 387.17487206150713,
+        "height": 367.88813163530335
       },
       "data": {
         "title": "Story Beat",
@@ -76,23 +59,6 @@
           "Dog #2 starts sneezing"
         ],
         "imageAssetIds": []
-      }
-    },
-    {
-      "id": "a379e69b-71eb-48cf-8ae7-ccf60014a799",
-      "type": "imageNode",
-      "position": {
-        "x": 53.59399385495132,
-        "y": 85.56163431528688
-      },
-      "size": {
-        "width": 228.28774263534874,
-        "height": 278.1594688839011
-      },
-      "parentId": "91d79398-c192-4375-bb74-2b84061dd3dc",
-      "extent": "parent",
-      "data": {
-        "assetId": "6bf0f8b5-07cb-4d59-86cc-a0ee53b8179f"
       }
     },
     {
@@ -118,12 +84,12 @@
       "id": "e724e025-3310-4add-8ce7-4fc951f8339d",
       "type": "imageNode",
       "position": {
-        "x": 51.987660943830804,
-        "y": 130.82202253184494
+        "x": 10,
+        "y": 119
       },
       "size": {
-        "width": 208.5643106217392,
-        "height": 276.4413894831964
+        "width": 306.3312577636972,
+        "height": 318.981423938285
       },
       "parentId": "6f794a5a-397e-468c-ad4d-469558b9ff3f",
       "extent": "parent",
@@ -154,12 +120,12 @@
       "id": "edf34853-526f-4d06-993a-fd056e9e3464",
       "type": "imageNode",
       "position": {
-        "x": 25.079734441950677,
-        "y": 103.91409602996481
+        "x": 10,
+        "y": 97
       },
       "size": {
-        "width": 311.44755901128104,
-        "height": 309.68059280904845
+        "width": 339.1898471011753,
+        "height": 325.17133851692165
       },
       "parentId": "59b4f004-f3c0-49d8-975c-59a89f835beb",
       "extent": "parent",
@@ -196,21 +162,9 @@
   ],
   "assets": [
     {
-      "id": "797053af-3a91-44a2-9120-46d5004f3356",
-      "fileName": "288bd18fd073898a8417c31c77f83059.jpg",
-      "relativePath": "bf36d2cf-b812-4d49-a960-f8752ac57094.jpg",
-      "mimeType": "image/jpeg"
-    },
-    {
       "id": "7f9a398e-3441-4ca2-962c-3a22f81767f0",
       "fileName": "tumblr_inline_pk24c4neqD1ud0rrx_640.jpg",
       "relativePath": "9aeeea58-68b2-4ad1-8819-23e84d940064.jpg",
-      "mimeType": "image/jpeg"
-    },
-    {
-      "id": "6bf0f8b5-07cb-4d59-86cc-a0ee53b8179f",
-      "fileName": "tumblr_inline_pk24c4neqD1ud0rrx_640.jpg",
-      "relativePath": "a1c13944-75ba-4682-bce7-12a6ca450613.jpg",
       "mimeType": "image/jpeg"
     },
     {
@@ -233,8 +187,8 @@
     }
   ],
   "viewport": {
-    "x": 695.2373124323774,
-    "y": 234.56851483565612,
-    "zoom": 0.55
+    "x": 820.4800251971561,
+    "y": 166.16270246196063,
+    "zoom": 0.6317840952483695
   }
 }

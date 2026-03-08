@@ -116,19 +116,6 @@ function readNodeContentRequiredHeight(nodeSurface: HTMLDivElement | null): numb
   return Math.ceil(Math.max(MIN_NODE_HEIGHT, beatsHeight + paddingTop + paddingBottom));
 }
 
-function readBeatTextMinimumHeight(nodeSurface: HTMLDivElement | null): number {
-  if (!nodeSurface) return MIN_NODE_HEIGHT;
-
-  const beatsContainer = nodeSurface.querySelector<HTMLElement>(".story-node__beats");
-  if (!beatsContainer) return MIN_NODE_HEIGHT;
-
-  const nodeStyles = window.getComputedStyle(nodeSurface);
-  const paddingTop = parsePixels(nodeStyles.paddingTop);
-  const paddingBottom = parsePixels(nodeStyles.paddingBottom);
-
-  return Math.ceil(beatsContainer.scrollHeight + paddingTop + paddingBottom);
-}
-
 function readImageFrameRect(nodeSurface: HTMLDivElement | null, nodeSize: { width: number; height: number }): ImageFrameRect {
   if (!nodeSurface) {
     return { x: 0, y: 0, width: nodeSize.width, height: nodeSize.height };
@@ -610,15 +597,6 @@ export const StoryNode = memo(function StoryNode({ id, data }: NodeProps<StoryNo
       width,
       height
     };
-    const beatMinimumHeight = readBeatTextMinimumHeight(nodeSurfaceRef.current);
-    const attachedImageCountAtStart = readAttachedImageIds(useGraphStore.getState().doc.nodes, id).length;
-    const withImageMinimum = enforceMinimumInNodeImageHeight(
-      nodeSurfaceRef.current,
-      { width, height },
-      attachedImageCountAtStart
-    );
-    const resizeMinimumHeight = Math.max(beatMinimumHeight, withImageMinimum.height);
-
     resizeSessionRef.current = {
       pointerId: event.pointerId,
       corner,
@@ -629,7 +607,7 @@ export const StoryNode = memo(function StoryNode({ id, data }: NodeProps<StoryNo
       startHeight: height,
       zoom,
       minWidth: Math.min(MIN_NODE_WIDTH, width),
-      minHeight: Math.min(resizeMinimumHeight, height)
+      minHeight: 0
     };
 
     const onPointerMove = (moveEvent: PointerEvent) => {
@@ -648,15 +626,6 @@ export const StoryNode = memo(function StoryNode({ id, data }: NodeProps<StoryNo
       } else {
         nextWidth = Math.max(session.minWidth, session.startWidth - dx);
         nextX = session.startNodeX + (session.startWidth - nextWidth);
-      }
-
-      if (attachedImageCountAtStart > 0) {
-        const withImageMinimum = enforceMinimumInNodeImageHeight(
-          nodeSurfaceRef.current,
-          { width: nextWidth, height: nextHeight },
-          attachedImageCountAtStart
-        );
-        nextHeight = Math.max(nextHeight, withImageMinimum.height);
       }
 
       applyLiveResize({ x: nextX, width: nextWidth, height: nextHeight });

@@ -53,6 +53,7 @@ const MIN_NODE_WIDTH = 320;
 const MIN_NODE_HEIGHT = 68;
 const IMAGE_FAB_CLEARANCE = 12;
 const MIN_IN_NODE_IMAGE_HEIGHT = 50;
+const MIN_IMAGE_CONTENT_EXTRA_HEIGHT = 100;
 
 type ResizeCorner = "bl" | "br";
 
@@ -114,6 +115,14 @@ function readNodeContentRequiredHeight(nodeSurface: HTMLDivElement | null): numb
   const beatsHeight = beatsContainer ? beatsContainer.scrollHeight : 0;
 
   return Math.ceil(Math.max(MIN_NODE_HEIGHT, beatsHeight + paddingTop + paddingBottom));
+}
+
+function readNodeMinimumHeight(nodeSurface: HTMLDivElement | null, attachedImageCount: number): number {
+  const contentMinimum = readNodeContentRequiredHeight(nodeSurface);
+  if (attachedImageCount <= 0) {
+    return contentMinimum;
+  }
+  return Math.ceil(Math.max(MIN_NODE_HEIGHT, contentMinimum + MIN_IMAGE_CONTENT_EXTRA_HEIGHT));
 }
 
 function readImageFrameRect(nodeSurface: HTMLDivElement | null, nodeSize: { width: number; height: number }): ImageFrameRect {
@@ -283,7 +292,7 @@ export const StoryNode = memo(function StoryNode({ id, data }: NodeProps<StoryNo
     const nodeSurface = nodeSurfaceRef.current;
     if (!nodeSurface) return;
 
-    const requiredHeight = readNodeContentRequiredHeight(nodeSurface);
+    const requiredHeight = readNodeMinimumHeight(nodeSurface, attachedImageCount);
     const node = useGraphStore.getState().doc.nodes.find((candidate) => candidate.id === id);
     if (!node) return;
 
@@ -307,7 +316,7 @@ export const StoryNode = memo(function StoryNode({ id, data }: NodeProps<StoryNo
     }));
 
     scheduleNodeInternalsUpdate();
-  }, [id, scheduleNodeInternalsUpdate]);
+  }, [attachedImageCount, id, scheduleNodeInternalsUpdate]);
 
   const syncAttachedImagesToFrame = useCallback(
     (nodeSizeOverride?: { width: number; height: number }) => {
@@ -318,11 +327,11 @@ export const StoryNode = memo(function StoryNode({ id, data }: NodeProps<StoryNo
 
       const attachedImageIds = readAttachedImageIds(state.doc.nodes, id);
       const baseNodeSize = nodeSizeOverride ?? readNodeSize(node);
-      const contentMinimumHeight = readNodeContentRequiredHeight(nodeSurface);
+      const contentMinimumHeight = readNodeMinimumHeight(nodeSurface, attachedImageIds.length);
       const withImageMinimum = enforceMinimumInNodeImageHeight(nodeSurface, baseNodeSize, attachedImageIds.length);
       const targetNodeHeight =
         attachedImageIds.length === 0
-          ? Math.max(contentMinimumHeight, MIN_NODE_HEIGHT)
+          ? contentMinimumHeight
           : Math.max(contentMinimumHeight, withImageMinimum.height);
 
       const resolvedNodeSize = {
@@ -606,8 +615,8 @@ export const StoryNode = memo(function StoryNode({ id, data }: NodeProps<StoryNo
       startWidth: width,
       startHeight: height,
       zoom,
-      minWidth: Math.min(MIN_NODE_WIDTH, width),
-      minHeight: 0
+      minWidth: MIN_NODE_WIDTH,
+      minHeight: readNodeMinimumHeight(nodeSurfaceRef.current, attachedImageCount)
     };
 
     const onPointerMove = (moveEvent: PointerEvent) => {
@@ -657,7 +666,7 @@ export const StoryNode = memo(function StoryNode({ id, data }: NodeProps<StoryNo
     window.addEventListener("pointermove", onPointerMove);
     window.addEventListener("pointerup", stopResize);
     window.addEventListener("pointercancel", stopResize);
-  }, [applyLiveResize, commitResize, flow, id, scheduleNodeInternalsUpdate]);
+  }, [applyLiveResize, attachedImageCount, commitResize, flow, id, scheduleNodeInternalsUpdate]);
 
   return (
     <div

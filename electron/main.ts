@@ -230,7 +230,8 @@ function mapUpdaterError(error: unknown): { status: UpdateState["status"]; messa
 }
 
 function appIconPath(): string {
-  return path.join(app.getAppPath(), "icons", "icon.png");
+  const iconName = process.platform === "win32" ? "icon.ico" : "icon.png";
+  return path.join(app.getAppPath(), "icons", iconName);
 }
 
 function buildAssetUri(assetId: string): string {

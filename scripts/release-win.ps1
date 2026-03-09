@@ -72,20 +72,6 @@ function Get-HttpStatusCode {
   }
 }
 
-function Get-CurrentCommitSha {
-  $sha = (& git rev-parse HEAD)
-  if ($LASTEXITCODE -ne 0) {
-    throw "Failed to resolve current git commit SHA."
-  }
-
-  $normalized = ($sha | Out-String).Trim()
-  if (-not $normalized) {
-    throw "Current git commit SHA is empty."
-  }
-
-  return $normalized
-}
-
 function Find-ReleaseByTagCandidates {
   param(
     [Parameter(Mandatory = $true)]
@@ -126,8 +112,6 @@ function Ensure-GitHubRelease {
     [hashtable]$Headers,
     [Parameter(Mandatory = $true)]
     [string[]]$TagCandidates,
-    [Parameter(Mandatory = $true)]
-    [string]$Version,
     [bool]$CreateAsDraft
   )
 
@@ -136,30 +120,34 @@ function Ensure-GitHubRelease {
     return $release
   }
 
-  $tagName = $TagCandidates[0]
-  $body = @{
-    tag_name = $tagName
-    target_commitish = Get-CurrentCommitSha
-    name = $tagName
-    draft = $CreateAsDraft
-    prerelease = $false
-    generate_release_notes = $false
-  } | ConvertTo-Json
+  foreach ($tagName in $TagCandidates) {
+    $body = @{
+      tag_name = $tagName
+      name = $tagName
+      draft = $CreateAsDraft
+      prerelease = $false
+      generate_release_notes = $false
+    } | ConvertTo-Json
 
-  try {
-    Write-Host "==> Creating GitHub release: $tagName"
-    return Invoke-RestMethod -Method Post -Uri "$ApiBase/releases" -Headers $Headers -ContentType "application/json" -Body $body
-  } catch {
-    $statusCode = Get-HttpStatusCode -ErrorRecord $_
-    if ($statusCode -eq 422) {
-      # Another process may have created the release concurrently; fetch again.
-      $release = Find-ReleaseByTagCandidates -ApiBase $ApiBase -Headers $Headers -TagCandidates $TagCandidates -Attempts 3 -DelaySeconds 2
-      if ($release) {
-        return $release
+    try {
+      Write-Host "==> Creating GitHub release: $tagName"
+      return Invoke-RestMethod -Method Post -Uri "$ApiBase/releases" -Headers $Headers -ContentType "application/json" -Body $body
+    } catch {
+      $statusCode = Get-HttpStatusCode -ErrorRecord $_
+      if ($statusCode -eq 422) {
+        # Another process may have created the release concurrently; fetch again.
+        $release = Find-ReleaseByTagCandidates -ApiBase $ApiBase -Headers $Headers -TagCandidates $TagCandidates -Attempts 3 -DelaySeconds 2
+        if ($release) {
+          return $release
+        }
+
+        continue
       }
+      throw
     }
-    throw
   }
+
+  throw "Could not create or find a GitHub release for tags: $($TagCandidates -join ', ')."
 }
 
 function Upload-ReleaseAsset {
@@ -319,7 +307,7 @@ $githubHeaders = @{
 }
 
 $tagCandidates = @("v$nextVersion", $nextVersion) | Select-Object -Unique
-$release = Ensure-GitHubRelease -ApiBase $apiBase -Headers $githubHeaders -TagCandidates $tagCandidates -Version $nextVersion -CreateAsDraft ([bool]$KeepDraft)
+$release = Ensure-GitHubRelease -ApiBase $apiBase -Headers $githubHeaders -TagCandidates $tagCandidates -CreateAsDraft ([bool]$KeepDraft)
 
 $productName = [string]$packageJson.build.productName
 if (-not $productName) {

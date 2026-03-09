@@ -48,10 +48,12 @@
     "files": [
       "dist/**/*",
       "dist-electron/**/*",
+      "icons/**/*",
       "package.json"
     ],
     "win": {
       "signAndEditExecutable": false,
+      "icon": "icons/icon.png",
       "target": [
         {
           "target": "nsis",

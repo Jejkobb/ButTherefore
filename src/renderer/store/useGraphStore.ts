@@ -69,10 +69,12 @@ interface GraphStore {
   removeImageNode: (nodeId: string) => Promise<void>;
   removeImageFromNode: (nodeId: string, assetId: string) => Promise<void>;
   newProject: () => Promise<void>;
-  openProject: () => Promise<void>;
+  openProject: () => Promise<boolean>;
+  openProjectAtPath: (projectPath: string) => Promise<boolean>;
   saveProject: () => Promise<void>;
   saveProjectAs: () => Promise<void>;
   autosaveProject: () => Promise<void>;
+  updateProjectName: (projectName: string) => void;
 }
 
 const empty = createEmptyProject();
@@ -242,6 +244,54 @@ function edgeExists(doc: GraphDocument, connection: Connection): boolean {
   );
 }
 
+function collectDescendantNodeIds(nodes: FlowNode[], selectedNodeIds: Set<string>): Set<string> {
+  if (selectedNodeIds.size === 0) return new Set();
+
+  const childrenByParent = nodes.reduce<Map<string, string[]>>((acc, node) => {
+    if (!node.parentId) return acc;
+    const siblings = acc.get(node.parentId) ?? [];
+    siblings.push(node.id);
+    acc.set(node.parentId, siblings);
+    return acc;
+  }, new Map());
+
+  const nodeIdsToRemove = new Set(selectedNodeIds);
+  const queue = [...selectedNodeIds];
+
+  while (queue.length > 0) {
+    const parentId = queue.pop();
+    if (!parentId) continue;
+    const childIds = childrenByParent.get(parentId) ?? [];
+
+    for (const childId of childIds) {
+      if (nodeIdsToRemove.has(childId)) continue;
+      nodeIdsToRemove.add(childId);
+      queue.push(childId);
+    }
+  }
+
+  return nodeIdsToRemove;
+}
+
+function retainReferencedAssets(
+  nodes: FlowNode[],
+  assets: Record<string, RuntimeStoryAsset>
+): Record<string, RuntimeStoryAsset> {
+  const referencedAssetIds = new Set(
+    nodes
+      .filter((node): node is ImageFlowNode => isImageNode(node))
+      .map((node) => node.data.assetId)
+      .filter((assetId): assetId is string => typeof assetId === "string" && assetId.length > 0)
+  );
+
+  return Object.entries(assets).reduce<Record<string, RuntimeStoryAsset>>((acc, [assetId, asset]) => {
+    if (referencedAssetIds.has(assetId)) {
+      acc[assetId] = asset;
+    }
+    return acc;
+  }, {});
+}
+
 export const useGraphStore = create<GraphStore>((set, get) => ({
   doc: initialDoc,
   history: { past: [], future: [] },
@@ -360,7 +410,8 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
         doc: {
           ...state.doc,
           viewport
-        }
+        },
+        dirty: true
       };
     });
   },
@@ -542,28 +593,33 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
 
   deleteSelection: () => {
     const { doc } = get();
-    const selectedNodeIds = new Set(doc.nodes.filter((node) => node.selected).map((node) => node.id));
+    const directlySelectedNodeIds = new Set(doc.nodes.filter((node) => node.selected).map((node) => node.id));
     const selectedEdgeIds = new Set(doc.edges.filter((edge) => edge.selected).map((edge) => edge.id));
+    const selectedNodeIds = collectDescendantNodeIds(doc.nodes, directlySelectedNodeIds);
 
     if (selectedNodeIds.size === 0 && selectedEdgeIds.size === 0) return;
 
-    const removedNodes = doc.nodes.filter((node) => selectedNodeIds.has(node.id));
-    const removedEdges = doc.edges.filter(
-      (edge) => selectedEdgeIds.has(edge.id) || selectedNodeIds.has(edge.source) || selectedNodeIds.has(edge.target)
+    const removedEdgeIds = new Set(
+      doc.edges
+        .filter((edge) => selectedEdgeIds.has(edge.id) || selectedNodeIds.has(edge.source) || selectedNodeIds.has(edge.target))
+        .map((edge) => edge.id)
     );
+    const nextNodes = doc.nodes.filter((node) => !selectedNodeIds.has(node.id));
+    const nextEdges = doc.edges.filter((edge) => !removedEdgeIds.has(edge.id));
+    const nextAssets = retainReferencedAssets(nextNodes, doc.assets);
+    const nextDoc: GraphDocument = {
+      ...doc,
+      nodes: nextNodes,
+      edges: nextEdges,
+      assets: nextAssets
+    };
+
+    if (selectedNodeIds.size === 0 && removedEdgeIds.size === 0) return;
 
     get().executeCommand({
       label: "Delete Selection",
-      redo: (stateDoc) => ({
-        ...stateDoc,
-        nodes: stateDoc.nodes.filter((node) => !selectedNodeIds.has(node.id)),
-        edges: stateDoc.edges.filter((edge) => !removedEdges.some((candidate) => candidate.id === edge.id))
-      }),
-      undo: (stateDoc) => ({
-        ...stateDoc,
-        nodes: [...stateDoc.nodes, ...removedNodes],
-        edges: [...stateDoc.edges, ...removedEdges]
-      })
+      redo: () => nextDoc,
+      undo: () => doc
     });
   },
 
@@ -988,32 +1044,19 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
     const target = doc.nodes.find((node): node is ImageFlowNode => node.id === nodeId && isImageNode(node));
     if (!target) return;
 
-    const assetId = target.data.assetId;
-    const targetAsset = doc.assets[assetId];
-    const remainingImageNodes = doc.nodes.filter((node): node is ImageFlowNode => node.id !== nodeId && isImageNode(node));
-    const stillReferenced = remainingImageNodes.some((node) => node.data.assetId === assetId);
+    const nextNodes = doc.nodes.filter((node) => node.id !== nodeId);
+    const nextAssets = retainReferencedAssets(nextNodes, doc.assets);
+    const nextDoc: GraphDocument = {
+      ...doc,
+      nodes: nextNodes,
+      assets: nextAssets
+    };
 
-    const nextAssets = { ...doc.assets };
-    if (!stillReferenced) {
-      delete nextAssets[assetId];
-    }
-
-    set({
-      doc: {
-        ...doc,
-        nodes: doc.nodes.filter((node) => node.id !== nodeId),
-        assets: nextAssets
-      },
-      dirty: true
+    get().executeCommand({
+      label: "Delete Image",
+      redo: () => nextDoc,
+      undo: () => doc
     });
-
-    if (!stillReferenced && targetAsset) {
-      try {
-        await window.storyBridge.deleteAsset(targetAsset.id, targetAsset.relativePath);
-      } catch (error) {
-        console.error("Failed to delete asset file", error);
-      }
-    }
   },
 
   removeImageFromNode: async (nodeId, assetId) => {
@@ -1041,7 +1084,7 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
 
   openProject: async () => {
     const opened = await window.storyBridge.openProject();
-    if (!opened) return;
+    if (!opened) return false;
 
     set({
       doc: projectToDocument(opened.project, opened.assets),
@@ -1052,6 +1095,23 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
       lastSavedAt: opened.project.meta.updatedAt,
       dirty: false
     });
+    return true;
+  },
+
+  openProjectAtPath: async (projectPath) => {
+    const opened = await window.storyBridge.openProjectAtPath(projectPath);
+    if (!opened) return false;
+
+    set({
+      doc: projectToDocument(opened.project, opened.assets),
+      history: { past: [], future: [] },
+      projectPath: opened.projectPath,
+      projectName: opened.project.meta.name,
+      createdAt: opened.project.meta.createdAt,
+      lastSavedAt: opened.project.meta.updatedAt,
+      dirty: false
+    });
+    return true;
   },
 
   saveProject: async () => {
@@ -1084,5 +1144,19 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
     const state = get();
     const payload = documentToProject(state.doc, state.projectName, state.createdAt);
     await window.storyBridge.autosaveProject(payload);
+  },
+
+  updateProjectName: (projectName) => {
+    const normalized = projectName.trim();
+    const nextName = normalized.length > 0 ? normalized : "Untitled Project";
+
+    set((state) => {
+      if (state.projectName === nextName) return state;
+
+      return {
+        projectName: nextName,
+        dirty: true
+      };
+    });
   }
 }));

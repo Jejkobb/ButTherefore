@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "meta": {
-    "name": "Untitled Project",
+    "name": "Dog Story",
     "createdAt": "2026-03-05T22:16:15.814Z",
-    "updatedAt": "2026-03-06T21:02:43.428Z"
+    "updatedAt": "2026-03-09T14:29:46.722Z"
   },
   "nodes": [
     {
@@ -46,12 +46,12 @@
       "id": "91d79398-c192-4375-bb74-2b84061dd3dc",
       "type": "storyNode",
       "position": {
-        "x": -386.6142564094799,
-        "y": 172.82337716699817
+        "x": -376.171544091325,
+        "y": 260.542160639499
       },
       "size": {
         "width": 387.17487206150713,
-        "height": 367.88813163530335
+        "height": 68
       },
       "data": {
         "title": "Story Beat",
@@ -132,6 +132,21 @@
       "data": {
         "assetId": "d3904131-95cd-47cf-88ac-ed56840de6eb"
       }
+    },
+    {
+      "id": "5174d0d3-3a7d-42aa-87dd-68e6e76a1a44",
+      "type": "storyNode",
+      "position": {
+        "x": 1115.713585438528,
+        "y": 357.61984208730934
+      },
+      "data": {
+        "title": "Story Beat",
+        "beats": [
+          ""
+        ],
+        "imageAssetIds": []
+      }
     }
   ],
   "edges": [
@@ -158,6 +173,14 @@
       "sourceHandle": "out",
       "targetHandle": "in",
       "relation": "BUT"
+    },
+    {
+      "id": "1180bec1-29c6-498d-a452-342e3f3bbdbc",
+      "source": "59b4f004-f3c0-49d8-975c-59a89f835beb",
+      "target": "5174d0d3-3a7d-42aa-87dd-68e6e76a1a44",
+      "sourceHandle": "out",
+      "targetHandle": "in",
+      "relation": "THEREFORE"
     }
   ],
   "assets": [
@@ -165,12 +188,6 @@
       "id": "7f9a398e-3441-4ca2-962c-3a22f81767f0",
       "fileName": "tumblr_inline_pk24c4neqD1ud0rrx_640.jpg",
       "relativePath": "9aeeea58-68b2-4ad1-8819-23e84d940064.jpg",
-      "mimeType": "image/jpeg"
-    },
-    {
-      "id": "d7eb95d9-836a-461f-8d4f-c7d629e54b45",
-      "fileName": "155013.jpg",
-      "relativePath": "f7137282-36f6-4a8f-ab20-4e2474a77cfe.jpg",
       "mimeType": "image/jpeg"
     },
     {
@@ -187,8 +204,8 @@
     }
   ],
   "viewport": {
-    "x": 820.4800251971561,
-    "y": 166.16270246196063,
-    "zoom": 0.6317840952483695
+    "x": 716.777475229383,
+    "y": 173.97055953554866,
+    "zoom": 0.6317840952483698
   }
 }

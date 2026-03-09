@@ -5,7 +5,13 @@ import { pathToFileURL } from "node:url";
 import { app, BrowserWindow, dialog, ipcMain, Menu, net, protocol, shell } from "electron";
 import { autoUpdater } from "electron-updater";
 import { assertStoryProjectFile, type RuntimeStoryAsset, type StoryProjectFile } from "../src/shared/types";
-import type { ProjectLoadResult, ProjectSaveResult } from "../src/shared/ipc";
+import type {
+  ProjectLoadResult,
+  ProjectSaveResult,
+  RecentProjectEntry,
+  StartupData,
+  UpdateState
+} from "../src/shared/ipc";
 
 const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
 const PROJECT_EXTENSION = ".storybeat.json";
@@ -14,11 +20,25 @@ const SESSION_ASSETS_ROOT = "session-assets";
 const ASSET_SCHEME = "story-asset";
 const ASSET_HOST = "asset";
 const UPDATE_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
+const RECENT_PROJECTS_FILE = "recent-projects.json";
+const MAX_RECENT_PROJECTS = 12;
+const APP_USER_MODEL_ID = "com.jejkobb.buttherefore";
 
 let mainWindow: BrowserWindow | null = null;
 let currentProjectPath: string | null = null;
 let workspaceAssetsDir = "";
 const assetPathIndex = new Map<string, string>();
+let recentProjects: RecentProjectEntry[] = [];
+let updateState: UpdateState = {
+  status: app.isPackaged ? "idle" : "unsupported",
+  currentVersion: app.getVersion(),
+  latestVersion: null,
+  message: app.isPackaged ? null : "Updates are available in packaged builds."
+};
+
+interface PersistedRecentProjects {
+  projects: RecentProjectEntry[];
+}
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -83,6 +103,136 @@ async function initializeWorkspace(): Promise<void> {
   assetPathIndex.clear();
 }
 
+function recentProjectsPath(): string {
+  return path.join(app.getPath("userData"), RECENT_PROJECTS_FILE);
+}
+
+function sanitizeRecentProjects(value: unknown): RecentProjectEntry[] {
+  if (!value || typeof value !== "object") return [];
+  const projects = (value as PersistedRecentProjects).projects;
+  if (!Array.isArray(projects)) return [];
+
+  const deduped = new Map<string, RecentProjectEntry>();
+  for (const entry of projects) {
+    if (!entry || typeof entry !== "object") continue;
+    const projectPath = typeof entry.path === "string" ? entry.path.trim() : "";
+    const projectName = typeof entry.name === "string" ? entry.name.trim() : "";
+    const lastOpenedAt = typeof entry.lastOpenedAt === "string" ? entry.lastOpenedAt.trim() : "";
+    if (!projectPath || !projectName || !lastOpenedAt) continue;
+
+    const normalizedPath = path.resolve(projectPath);
+    deduped.set(normalizedPath, {
+      path: normalizedPath,
+      name: projectName,
+      lastOpenedAt
+    });
+  }
+
+  return [...deduped.values()]
+    .sort((a, b) => b.lastOpenedAt.localeCompare(a.lastOpenedAt))
+    .slice(0, MAX_RECENT_PROJECTS);
+}
+
+async function loadRecentProjects(): Promise<void> {
+  try {
+    const raw = await fs.readFile(recentProjectsPath(), "utf-8");
+    const parsed = JSON.parse(raw);
+    recentProjects = sanitizeRecentProjects(parsed);
+  } catch {
+    recentProjects = [];
+  }
+}
+
+async function saveRecentProjects(): Promise<void> {
+  const payload: PersistedRecentProjects = { projects: recentProjects };
+  await fs.writeFile(recentProjectsPath(), JSON.stringify(payload, null, 2), "utf-8");
+}
+
+async function rememberRecentProject(projectPath: string, projectName: string): Promise<void> {
+  const normalizedPath = path.resolve(projectPath);
+  const now = new Date().toISOString();
+
+  recentProjects = [
+    {
+      path: normalizedPath,
+      name: projectName,
+      lastOpenedAt: now
+    },
+    ...recentProjects.filter((entry) => entry.path !== normalizedPath)
+  ].slice(0, MAX_RECENT_PROJECTS);
+
+  try {
+    await saveRecentProjects();
+  } catch (error) {
+    console.error("Failed to persist recent projects", error);
+  }
+}
+
+async function existingRecentProjects(): Promise<RecentProjectEntry[]> {
+  const visible: RecentProjectEntry[] = [];
+  let changed = false;
+
+  for (const entry of recentProjects) {
+    try {
+      await fs.access(entry.path);
+      visible.push(entry);
+    } catch {
+      changed = true;
+    }
+  }
+
+  if (changed) {
+    recentProjects = visible;
+    try {
+      await saveRecentProjects();
+    } catch (error) {
+      console.error("Failed to prune recent projects", error);
+    }
+  }
+
+  return visible;
+}
+
+function currentUpdateState(): UpdateState {
+  return { ...updateState };
+}
+
+function setUpdateState(next: Partial<UpdateState>): UpdateState {
+  updateState = {
+    ...updateState,
+    ...next,
+    currentVersion: app.getVersion()
+  };
+  return currentUpdateState();
+}
+
+function updateErrorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error ?? "");
+}
+
+function mapUpdaterError(error: unknown): { status: UpdateState["status"]; message: string } {
+  const raw = updateErrorText(error);
+  const normalized = raw.toLowerCase();
+  const feedUnavailable = normalized.includes("releases.atom") && normalized.includes("404");
+
+  if (feedUnavailable) {
+    return {
+      status: "not-available",
+      message:
+        "Update feed was not found on GitHub (releases.atom returned 404). Publish a Release first, or make sure the release repo is publicly accessible."
+    };
+  }
+
+  return {
+    status: "error",
+    message: raw || "Failed to check for updates."
+  };
+}
+
+function appIconPath(): string {
+  return path.join(app.getAppPath(), "icons", "icon.png");
+}
+
 function buildAssetUri(assetId: string): string {
   return `${ASSET_SCHEME}://${ASSET_HOST}/${encodeURIComponent(assetId)}`;
 }
@@ -102,8 +252,39 @@ function runtimeAssetsForProject(project: StoryProjectFile, assetsDir: string): 
   });
 }
 
-async function copyWorkspaceAssetsTo(targetAssetsDir: string, project: StoryProjectFile): Promise<void> {
+async function listRelativeFiles(rootDir: string): Promise<string[]> {
+  const files: string[] = [];
+
+  const walk = async (directory: string): Promise<void> => {
+    const entries = await fs.readdir(directory, { withFileTypes: true });
+    for (const entry of entries) {
+      const absolutePath = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        await walk(absolutePath);
+        continue;
+      }
+      if (entry.isFile()) {
+        files.push(path.relative(rootDir, absolutePath));
+      }
+    }
+  };
+
+  try {
+    await walk(rootDir);
+  } catch (error) {
+    const candidate = error as NodeJS.ErrnoException;
+    if (candidate.code === "ENOENT") {
+      return [];
+    }
+    throw error;
+  }
+
+  return files;
+}
+
+async function syncWorkspaceAssetsTo(targetAssetsDir: string, project: StoryProjectFile): Promise<void> {
   await ensureDir(targetAssetsDir);
+  const expected = new Set(project.assets.map((asset) => path.normalize(asset.relativePath)));
 
   for (const asset of project.assets) {
     const sourcePath = path.join(workspaceAssetsDir, asset.relativePath);
@@ -113,12 +294,34 @@ async function copyWorkspaceAssetsTo(targetAssetsDir: string, project: StoryProj
       await fs.copyFile(sourcePath, targetPath);
     }
   }
+
+  const existingFiles = await listRelativeFiles(targetAssetsDir);
+  for (const relativePath of existingFiles) {
+    if (expected.has(path.normalize(relativePath))) continue;
+    await fs.rm(path.join(targetAssetsDir, relativePath), { force: true });
+  }
+}
+
+async function loadProjectFromPath(projectPath: string): Promise<ProjectLoadResult> {
+  const raw = await fs.readFile(projectPath, "utf-8");
+  const parsed = assertStoryProjectFile(JSON.parse(raw));
+
+  currentProjectPath = projectPath;
+  workspaceAssetsDir = projectAssetsDir(projectPath);
+  await ensureDir(workspaceAssetsDir);
+  await rememberRecentProject(projectPath, parsed.meta.name);
+
+  return {
+    projectPath,
+    project: parsed,
+    assets: runtimeAssetsForProject(parsed, workspaceAssetsDir)
+  };
 }
 
 async function writeProjectToPath(project: StoryProjectFile, filePath: string): Promise<ProjectSaveResult> {
   const finalPath = ensureProjectExtension(filePath);
   const assetsDir = projectAssetsDir(finalPath);
-  await copyWorkspaceAssetsTo(assetsDir, project);
+  await syncWorkspaceAssetsTo(assetsDir, project);
 
   const nextProject: StoryProjectFile = {
     ...project,
@@ -137,6 +340,7 @@ async function writeProjectToPath(project: StoryProjectFile, filePath: string): 
   for (const asset of project.assets) {
     assetPathIndex.set(asset.id, path.join(assetsDir, asset.relativePath));
   }
+  await rememberRecentProject(finalPath, nextProject.meta.name);
 
   return {
     projectPath: finalPath,
@@ -151,6 +355,7 @@ async function createWindow(): Promise<void> {
     minWidth: 1100,
     minHeight: 700,
     backgroundColor: "#0b0f17",
+    icon: appIconPath(),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -175,58 +380,114 @@ async function createWindow(): Promise<void> {
 
 function registerAutoUpdates(): void {
   if (!app.isPackaged) {
+    setUpdateState({
+      status: "unsupported",
+      latestVersion: null,
+      message: "Updates are available in packaged builds."
+    });
     return;
   }
+
+  setUpdateState({
+    status: "idle",
+    latestVersion: null,
+    message: null
+  });
 
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
 
+  autoUpdater.on("checking-for-update", () => {
+    setUpdateState({
+      status: "checking",
+      message: null
+    });
+  });
+
   autoUpdater.on("error", (error) => {
     console.error("Auto-update error", error);
+    const mapped = mapUpdaterError(error);
+    setUpdateState({
+      status: mapped.status,
+      message: mapped.message
+    });
   });
 
   autoUpdater.on("update-available", (info) => {
     console.info(`Update available: ${info.version}`);
+    setUpdateState({
+      status: "available",
+      latestVersion: info.version,
+      message: `Downloading version ${info.version}.`
+    });
   });
 
   autoUpdater.on("update-not-available", () => {
     console.info("No updates available.");
+    setUpdateState({
+      status: "not-available",
+      latestVersion: null,
+      message: "You're on the latest version."
+    });
   });
 
-  autoUpdater.on("update-downloaded", async (info) => {
+  autoUpdater.on("update-downloaded", (info) => {
     console.info(`Update downloaded: ${info.version}`);
-
-    if (!mainWindow) {
-      autoUpdater.quitAndInstall();
-      return;
-    }
-
-    const decision = await dialog.showMessageBox(mainWindow, {
-      type: "info",
-      title: "Update ready",
-      message: `Version ${info.version} has been downloaded.`,
-      detail: "Restart now to install the update.",
-      buttons: ["Restart now", "Later"],
-      defaultId: 0,
-      cancelId: 1
+    setUpdateState({
+      status: "downloaded",
+      latestVersion: info.version,
+      message: `Version ${info.version} is ready to install.`
     });
+  });
 
-    if (decision.response === 0) {
-      setImmediate(() => {
-        autoUpdater.quitAndInstall();
+  const checkForUpdates = async (): Promise<void> => {
+    try {
+      await autoUpdater.checkForUpdates();
+    } catch (error) {
+      console.error("Failed to check for updates", error);
+      const mapped = mapUpdaterError(error);
+      setUpdateState({
+        status: mapped.status,
+        message: mapped.message
       });
     }
-  });
-
-  const checkForUpdates = (): void => {
-    void autoUpdater.checkForUpdates().catch((error) => {
-      console.error("Failed to check for updates", error);
-    });
   };
 
-  checkForUpdates();
-  const interval = setInterval(checkForUpdates, UPDATE_CHECK_INTERVAL_MS);
+  void checkForUpdates();
+  const interval = setInterval(() => void checkForUpdates(), UPDATE_CHECK_INTERVAL_MS);
   interval.unref();
+}
+
+async function checkForUpdatesOnDemand(): Promise<UpdateState> {
+  if (!app.isPackaged) {
+    return currentUpdateState();
+  }
+
+  setUpdateState({ status: "checking", message: null });
+
+  try {
+    await autoUpdater.checkForUpdates();
+  } catch (error) {
+    console.error("Failed to check for updates", error);
+    const mapped = mapUpdaterError(error);
+    setUpdateState({
+      status: mapped.status,
+      message: mapped.message
+    });
+  }
+
+  return currentUpdateState();
+}
+
+function installDownloadedUpdate(): boolean {
+  if (!app.isPackaged || updateState.status !== "downloaded") {
+    return false;
+  }
+
+  setImmediate(() => {
+    autoUpdater.quitAndInstall();
+  });
+  return true;
 }
 
 function registerIpc(): void {
@@ -293,19 +554,16 @@ function registerIpc(): void {
       return null;
     }
 
-    const projectPath = selected.filePaths[0];
-    const raw = await fs.readFile(projectPath, "utf-8");
-    const parsed = assertStoryProjectFile(JSON.parse(raw));
+    return loadProjectFromPath(selected.filePaths[0]);
+  });
 
-    currentProjectPath = projectPath;
-    workspaceAssetsDir = projectAssetsDir(projectPath);
-    await ensureDir(workspaceAssetsDir);
-
-    return {
-      projectPath,
-      project: parsed,
-      assets: runtimeAssetsForProject(parsed, workspaceAssetsDir)
-    };
+  ipcMain.handle("project:openAtPath", async (_event, projectPath: string): Promise<ProjectLoadResult | null> => {
+    try {
+      return await loadProjectFromPath(projectPath);
+    } catch (error) {
+      console.error("Failed to open project", error);
+      return null;
+    }
   });
 
   ipcMain.handle("project:save", async (_event, project: StoryProjectFile, projectPath: string | null): Promise<ProjectSaveResult | null> => {
@@ -345,14 +603,7 @@ function registerIpc(): void {
     const root = path.join(app.getPath("userData"), AUTOSAVE_ROOT);
     const autosaveAssetsDir = path.join(root, "assets");
     await ensureDir(root);
-    await ensureDir(autosaveAssetsDir);
-
-    for (const asset of project.assets) {
-      const sourcePath = path.join(workspaceAssetsDir, asset.relativePath);
-      const targetPath = path.join(autosaveAssetsDir, asset.relativePath);
-      await ensureDir(path.dirname(targetPath));
-      await fs.copyFile(sourcePath, targetPath);
-    }
+    await syncWorkspaceAssetsTo(autosaveAssetsDir, project);
 
     const autosaveProject: StoryProjectFile = {
       ...project,
@@ -364,9 +615,30 @@ function registerIpc(): void {
 
     await fs.writeFile(path.join(root, "autosave.storybeat.json"), JSON.stringify(autosaveProject, null, 2), "utf-8");
   });
+
+  ipcMain.handle("app:getStartupData", async (): Promise<StartupData> => {
+    return {
+      appName: "ButTherefore",
+      version: app.getVersion(),
+      recentProjects: await existingRecentProjects(),
+      update: currentUpdateState()
+    };
+  });
+
+  ipcMain.handle("app:checkForUpdates", async (): Promise<UpdateState> => {
+    return checkForUpdatesOnDemand();
+  });
+
+  ipcMain.handle("app:installUpdate", (): boolean => {
+    return installDownloadedUpdate();
+  });
 }
 
 app.whenReady().then(async () => {
+  if (process.platform === "win32") {
+    app.setAppUserModelId(APP_USER_MODEL_ID);
+  }
+
   Menu.setApplicationMenu(null);
 
   protocol.handle(ASSET_SCHEME, async (request) => {
@@ -382,6 +654,7 @@ app.whenReady().then(async () => {
   });
 
   await initializeWorkspace();
+  await loadRecentProjects();
   registerIpc();
   await createWindow();
   registerAutoUpdates();

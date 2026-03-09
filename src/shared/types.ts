@@ -34,6 +34,7 @@ export interface StoryNodeModel {
   type?: StoryNodeType;
   position: { x: number; y: number };
   size?: { width: number; height: number };
+  zIndex?: number;
   parentId?: string;
   extent?: "parent";
   data: StoryNodeData | PostItNodeData | ImageNodeData;

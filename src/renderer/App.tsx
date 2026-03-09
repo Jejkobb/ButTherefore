@@ -16,12 +16,14 @@ import {
   type Viewport,
   type XYPosition
 } from "@xyflow/react";
-import { ChevronDown, FilePlus, FolderOpen, ImagePlus, Locate, Moon, Plus, Redo2, Save, SaveAll, StickyNote, Sun, Undo2 } from "lucide-react";
+import { ChevronDown, Clock3, FilePlus, FolderOpen, HardDriveDownload, ImagePlus, Locate, Moon, Plus, Redo2, RefreshCw, Save, SaveAll, StickyNote, Sun, Undo2 } from "lucide-react";
+import appIcon from "../../icons/icon.png";
 import { ImageNode } from "@/renderer/components/ImageNode";
 import { PostItNode } from "@/renderer/components/PostItNode";
 import { StoryEdge } from "@/renderer/components/StoryEdge";
 import { StoryNode } from "@/renderer/components/StoryNode";
 import { useGraphStore } from "@/renderer/store/useGraphStore";
+import type { RecentProjectEntry, StartupData, UpdateState } from "@/shared/ipc";
 
 const nodeTypes = { storyNode: StoryNode, postItNode: PostItNode, imageNode: ImageNode };
 const edgeTypes = { storyEdge: StoryEdge };
@@ -36,12 +38,6 @@ function readInitialTheme(): ThemeMode {
   }
 
   return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
-}
-
-function getDisplayName(projectPath: string | null): string {
-  if (!projectPath) return "Untitled Project";
-  const parts = projectPath.split(/[\\/]/);
-  return parts[parts.length - 1];
 }
 
 function isTypingTarget(target: EventTarget | null): boolean {
@@ -72,24 +68,179 @@ interface CreateOption {
   id: "node" | "postit" | "image";
   title: string;
   description: string;
-  action: () => void | Promise<void>;
+  action: () => void | Promise<unknown>;
   icon: typeof Plus;
+}
+
+interface StartupScreenProps {
+  data: StartupData | null;
+  loading: boolean;
+  busy: boolean;
+  checkingForUpdates: boolean;
+  error: string | null;
+  onNewProject: () => void;
+  onOpenProject: () => void;
+  onOpenRecent: (projectPath: string) => void;
+  onCheckUpdates: () => void;
+  onInstallUpdate: () => void;
+}
+
+function formatRecentProjectTime(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Unknown";
+
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short"
+  }).format(date);
+}
+
+function describeUpdate(update: UpdateState | null): string {
+  if (!update) return "Update status unavailable.";
+
+  switch (update.status) {
+    case "unsupported":
+      return update.message ?? "Updates are available in packaged builds only.";
+    case "idle":
+      return "Check for updates to verify if a new version is available.";
+    case "checking":
+      return "Checking for updates...";
+    case "available":
+      return update.message ?? "A new update is available and downloading.";
+    case "not-available":
+      return update.message ?? "You are using the latest version.";
+    case "downloaded":
+      return update.message ?? "An update is ready to install.";
+    case "error":
+      return update.message ?? "Update check failed.";
+    default:
+      return "Update status unavailable.";
+  }
+}
+
+function StartupScreen({
+  data,
+  loading,
+  busy,
+  checkingForUpdates,
+  error,
+  onNewProject,
+  onOpenProject,
+  onOpenRecent,
+  onCheckUpdates,
+  onInstallUpdate
+}: StartupScreenProps) {
+  const appName = data?.appName ?? "ButTherefore";
+  const version = data?.version ?? "0.0.0";
+  const recentProjects = data?.recentProjects ?? [];
+  const update = data?.update ?? null;
+  const canInstallUpdate = update?.status === "downloaded";
+  const canCheckUpdates =
+    !checkingForUpdates &&
+    !busy &&
+    update !== null &&
+    update.status !== "unsupported" &&
+    update.status !== "checking" &&
+    update.status !== "available";
+
+  return (
+    <div className="startup-shell" role="dialog" aria-modal="true" aria-label={`${appName} startup`}>
+      <div className="startup-surface">
+        <section className="startup-hero">
+          <div className="startup-hero__brand">
+            <img className="startup-hero__logo" src={appIcon} alt={`${appName} logo`} />
+            <div className="startup-hero__title-wrap">
+              <p className="startup-hero__kicker">Story Workspace</p>
+              <h1 className="startup-hero__title">{appName}</h1>
+              <p className="startup-hero__version">Version {version}</p>
+            </div>
+          </div>
+
+          <div className="startup-hero__actions">
+            <button className="startup-btn startup-btn--primary" type="button" onClick={onNewProject} disabled={busy}>
+              New Project
+            </button>
+            <button className="startup-btn" type="button" onClick={onOpenProject} disabled={busy}>
+              Open Project
+            </button>
+          </div>
+        </section>
+
+        <section className="startup-content">
+          <article className="startup-card startup-card--recent">
+            <header className="startup-card__header">
+              <h2>Recent Projects</h2>
+              <span>{recentProjects.length}</span>
+            </header>
+
+            <div className="startup-recent-list">
+              {loading ? <div className="startup-empty">Loading recent projects...</div> : null}
+              {!loading && recentProjects.length === 0 ? <div className="startup-empty">No recent projects yet.</div> : null}
+              {!loading
+                ? recentProjects.map((entry) => (
+                    <button
+                      key={entry.path}
+                      className="startup-recent-item"
+                      type="button"
+                      onClick={() => onOpenRecent(entry.path)}
+                      disabled={busy}
+                    >
+                      <strong>{entry.name}</strong>
+                      <span>{entry.path}</span>
+                      <small>
+                        <Clock3 size={10} aria-hidden="true" />
+                        <span>{formatRecentProjectTime(entry.lastOpenedAt)}</span>
+                      </small>
+                    </button>
+                  ))
+                : null}
+            </div>
+          </article>
+
+          <article className="startup-card startup-card--update">
+            <header className="startup-card__header">
+              <h2>Software Update</h2>
+              <HardDriveDownload size={15} aria-hidden="true" />
+            </header>
+            <p className="startup-update__status">{describeUpdate(update)}</p>
+            {update?.latestVersion ? <p className="startup-update__version">Latest: v{update.latestVersion}</p> : null}
+            <button
+              className="startup-btn startup-btn--update"
+              type="button"
+              disabled={canInstallUpdate ? busy : !canCheckUpdates}
+              onClick={canInstallUpdate ? onInstallUpdate : onCheckUpdates}
+            >
+              {canInstallUpdate ? "Restart and Install" : checkingForUpdates ? "Checking..." : "Check for Updates"}
+              {!canInstallUpdate ? <RefreshCw size={14} aria-hidden="true" /> : null}
+            </button>
+          </article>
+
+          {error ? <div className="startup-error">{error}</div> : null}
+        </section>
+      </div>
+    </div>
+  );
 }
 
 function Editor() {
   const flow = useReactFlow();
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const createInputRef = useRef<HTMLInputElement | null>(null);
+  const projectNameInputRef = useRef<HTMLInputElement | null>(null);
   const dragStartPositions = useRef<Record<string, XYPosition>>({});
   const connectStartRef = useRef<OnConnectStartParams | null>(null);
   const [theme, setTheme] = useState<ThemeMode>(readInitialTheme);
   const [openMenu, setOpenMenu] = useState<MenuId | null>(null);
   const [showCreatePalette, setShowCreatePalette] = useState(false);
   const [createQuery, setCreateQuery] = useState("");
+  const [projectNameDraft, setProjectNameDraft] = useState("");
+  const [isEditingProjectName, setIsEditingProjectName] = useState(false);
+  const [recentProjects, setRecentProjects] = useState<RecentProjectEntry[]>([]);
+  const [isLoadingRecentProjects, setIsLoadingRecentProjects] = useState(false);
 
   const doc = useGraphStore((state) => state.doc);
   const history = useGraphStore((state) => state.history);
-  const projectPath = useGraphStore((state) => state.projectPath);
+  const projectName = useGraphStore((state) => state.projectName);
   const dirty = useGraphStore((state) => state.dirty);
 
   const applyNodeChangesLive = useGraphStore((state) => state.applyNodeChangesLive);
@@ -106,11 +257,12 @@ function Editor() {
   const redo = useGraphStore((state) => state.redo);
   const newProject = useGraphStore((state) => state.newProject);
   const openProject = useGraphStore((state) => state.openProject);
+  const openProjectAtPath = useGraphStore((state) => state.openProjectAtPath);
   const saveProject = useGraphStore((state) => state.saveProject);
   const saveProjectAs = useGraphStore((state) => state.saveProjectAs);
   const autosaveProject = useGraphStore((state) => state.autosaveProject);
+  const updateProjectName = useGraphStore((state) => state.updateProjectName);
 
-  const toolbarTitle = useMemo(() => `${getDisplayName(projectPath)}${dirty ? " *" : ""}`, [projectPath, dirty]);
   const backgroundDotColor = theme === "dark" ? "rgba(255, 255, 255, 0.14)" : "rgba(21, 31, 45, 0.2)";
   const miniMapNodeColor = theme === "dark" ? "rgba(210, 210, 210, 0.7)" : "rgba(68, 82, 102, 0.58)";
   const miniMapMaskColor = theme === "dark" ? "rgba(5, 5, 5, 0.76)" : "rgba(241, 244, 248, 0.72)";
@@ -129,11 +281,24 @@ function Editor() {
     setShowCreatePalette(true);
   }, []);
 
-  const runMenuAction = useCallback((action: () => void | Promise<void>) => {
+  const runMenuAction = useCallback((action: () => void | Promise<unknown>) => {
     setOpenMenu(null);
     setShowCreatePalette(false);
     setCreateQuery("");
     void action();
+  }, []);
+
+  const loadRecentProjects = useCallback(async () => {
+    setIsLoadingRecentProjects(true);
+    try {
+      const startup = await window.storyBridge.getStartupData();
+      setRecentProjects(startup.recentProjects);
+    } catch (error) {
+      console.error("Failed to load recent projects", error);
+      setRecentProjects([]);
+    } finally {
+      setIsLoadingRecentProjects(false);
+    }
   }, []);
 
   const createNodeAtViewportCenter = useCallback(() => {
@@ -365,6 +530,30 @@ function Editor() {
     return () => cancelAnimationFrame(frame);
   }, [showCreatePalette]);
 
+  useEffect(() => {
+    setProjectNameDraft(projectName);
+  }, [projectName]);
+
+  const commitProjectName = useCallback(() => {
+    const normalized = projectNameDraft.trim();
+    updateProjectName(normalized.length > 0 ? normalized : "Untitled Project");
+    setIsEditingProjectName(false);
+  }, [projectNameDraft, updateProjectName]);
+
+  const cancelProjectNameEdit = useCallback(() => {
+    setProjectNameDraft(projectName);
+    setIsEditingProjectName(false);
+  }, [projectName]);
+
+  useEffect(() => {
+    if (!isEditingProjectName) return;
+    const frame = requestAnimationFrame(() => {
+      projectNameInputRef.current?.focus();
+      projectNameInputRef.current?.select();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [isEditingProjectName]);
+
   return (
     <div className="app-shell">
       <header className="app-toolbar">
@@ -379,7 +568,15 @@ function Editor() {
               type="button"
               aria-haspopup="menu"
               aria-expanded={openMenu === "file"}
-              onClick={() => setOpenMenu((current) => (current === "file" ? null : "file"))}
+              onClick={() =>
+                setOpenMenu((current) => {
+                  const next = current === "file" ? null : "file";
+                  if (next === "file") {
+                    void loadRecentProjects();
+                  }
+                  return next;
+                })
+              }
             >
               <span>File</span>
               <ChevronDown size={14} aria-hidden="true" />
@@ -394,6 +591,27 @@ function Editor() {
                   <FolderOpen size={14} aria-hidden="true" />
                   <span>Open</span>
                 </button>
+                <div className="app-menu__section-title">Open Recent</div>
+                {isLoadingRecentProjects ? (
+                  <button type="button" disabled>
+                    <FolderOpen size={14} aria-hidden="true" />
+                    <span>Loading...</span>
+                  </button>
+                ) : null}
+                {!isLoadingRecentProjects && recentProjects.length === 0 ? (
+                  <button type="button" disabled>
+                    <FolderOpen size={14} aria-hidden="true" />
+                    <span>No recent projects</span>
+                  </button>
+                ) : null}
+                {!isLoadingRecentProjects
+                  ? recentProjects.slice(0, 6).map((entry) => (
+                      <button key={entry.path} onClick={() => runMenuAction(() => openProjectAtPath(entry.path))} type="button">
+                        <FolderOpen size={14} aria-hidden="true" />
+                        <span>{entry.name}</span>
+                      </button>
+                    ))
+                  : null}
                 <button onClick={() => runMenuAction(saveProject)} type="button">
                   <Save size={14} aria-hidden="true" />
                   <span>Save</span>
@@ -479,7 +697,52 @@ function Editor() {
             <span>{theme === "dark" ? "Light" : "Dark"}</span>
           </button>
         </div>
-        <div className="app-toolbar__project">{toolbarTitle}</div>
+        <div className="app-toolbar__project">
+          {isEditingProjectName ? (
+            <input
+              ref={projectNameInputRef}
+              id="project-name-input"
+              className="app-toolbar__project-name"
+              type="text"
+              value={projectNameDraft}
+              onChange={(event) => setProjectNameDraft(event.target.value)}
+              onBlur={commitProjectName}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  commitProjectName();
+                  event.currentTarget.blur();
+                  return;
+                }
+
+                if (event.key === "Escape") {
+                  event.preventDefault();
+                  cancelProjectNameEdit();
+                }
+              }}
+              aria-label="Project name"
+              placeholder="Untitled Project"
+              maxLength={80}
+            />
+          ) : (
+            <div
+              className="app-toolbar__project-display"
+              role="button"
+              tabIndex={0}
+              onDoubleClick={() => setIsEditingProjectName(true)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  setIsEditingProjectName(true);
+                }
+              }}
+              title="Double-click to rename"
+            >
+              {projectName}
+              {dirty ? " *" : ""}
+            </div>
+          )}
+        </div>
       </header>
 
       {showCreatePalette ? (
@@ -581,9 +844,154 @@ function Editor() {
 }
 
 export default function App() {
+  const newProject = useGraphStore((state) => state.newProject);
+  const openProject = useGraphStore((state) => state.openProject);
+  const openProjectAtPath = useGraphStore((state) => state.openProjectAtPath);
+  const [showStartup, setShowStartup] = useState(true);
+  const [startupData, setStartupData] = useState<StartupData | null>(null);
+  const [startupLoading, setStartupLoading] = useState(true);
+  const [startupBusy, setStartupBusy] = useState(false);
+  const [checkingForUpdates, setCheckingForUpdates] = useState(false);
+  const [startupError, setStartupError] = useState<string | null>(null);
+
+  const loadStartupData = useCallback(async () => {
+    try {
+      const next = await window.storyBridge.getStartupData();
+      setStartupData(next);
+      setStartupError(null);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to load startup data.";
+      setStartupError(message);
+    } finally {
+      setStartupLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadStartupData();
+  }, [loadStartupData]);
+
+  useEffect(() => {
+    if (!showStartup) return;
+    const status = startupData?.update.status;
+    if (status !== "checking" && status !== "available") return;
+
+    const timer = window.setInterval(() => {
+      void loadStartupData();
+    }, 2600);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [loadStartupData, showStartup, startupData?.update.status]);
+
+  const withStartupBusy = useCallback(
+    async (action: () => Promise<void>) => {
+      if (startupBusy) return;
+      setStartupBusy(true);
+      setStartupError(null);
+      try {
+        await action();
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Action failed.";
+        setStartupError(message);
+      } finally {
+        setStartupBusy(false);
+      }
+    },
+    [startupBusy]
+  );
+
+  const handleNewProject = useCallback(() => {
+    void withStartupBusy(async () => {
+      await newProject();
+      setShowStartup(false);
+    });
+  }, [newProject, withStartupBusy]);
+
+  const handleOpenProject = useCallback(() => {
+    void withStartupBusy(async () => {
+      const opened = await openProject();
+      if (opened) {
+        setShowStartup(false);
+      } else {
+        await loadStartupData();
+      }
+    });
+  }, [loadStartupData, openProject, withStartupBusy]);
+
+  const handleOpenRecent = useCallback(
+    (projectPath: string) => {
+      void withStartupBusy(async () => {
+        const opened = await openProjectAtPath(projectPath);
+        if (opened) {
+          setShowStartup(false);
+          return;
+        }
+
+        setStartupError("Could not open that project.");
+        await loadStartupData();
+      });
+    },
+    [loadStartupData, openProjectAtPath, withStartupBusy]
+  );
+
+  const handleCheckForUpdates = useCallback(() => {
+    if (checkingForUpdates || startupBusy) return;
+
+    setCheckingForUpdates(true);
+    setStartupError(null);
+
+    void window.storyBridge
+      .checkForUpdates()
+      .then((update) => {
+        setStartupData((current) => {
+          if (!current) return current;
+          return {
+            ...current,
+            update
+          };
+        });
+      })
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : "Failed to check for updates.";
+        setStartupError(message);
+      })
+      .finally(() => {
+        setCheckingForUpdates(false);
+        void loadStartupData();
+      });
+  }, [checkingForUpdates, loadStartupData, startupBusy]);
+
+  const handleInstallUpdate = useCallback(() => {
+    if (startupBusy) return;
+
+    void withStartupBusy(async () => {
+      const started = await window.storyBridge.installUpdate();
+      if (!started) {
+        const update = await window.storyBridge.checkForUpdates();
+        setStartupData((current) => (current ? { ...current, update } : current));
+      }
+    });
+  }, [startupBusy, withStartupBusy]);
+
   return (
     <ReactFlowProvider>
       <Editor />
+      {showStartup ? (
+        <StartupScreen
+          data={startupData}
+          loading={startupLoading}
+          busy={startupBusy}
+          checkingForUpdates={checkingForUpdates}
+          error={startupError}
+          onNewProject={handleNewProject}
+          onOpenProject={handleOpenProject}
+          onOpenRecent={handleOpenRecent}
+          onCheckUpdates={handleCheckForUpdates}
+          onInstallUpdate={handleInstallUpdate}
+        />
+      ) : null}
     </ReactFlowProvider>
   );
 }

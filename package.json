@@ -15,7 +15,8 @@
     "typecheck": "tsc --noEmit",
     "dist": "npm run build && electron-builder --publish never",
     "dist:win": "npm run build && electron-builder --win nsis --publish never",
-    "release:win": "npm run build && electron-builder --win nsis --publish always"
+    "release:win": "npm run build && electron-builder --win nsis --publish always",
+    "release:win:auto": "powershell -ExecutionPolicy Bypass -File ./scripts/release-win.ps1"
   },
   "dependencies": {
     "@xyflow/react": "^12.8.4",

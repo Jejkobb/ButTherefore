@@ -80,6 +80,19 @@ Build Windows installer locally:
 npm run dist:win
 ```
 
+Automated Windows release (bump version, commit/push, publish installer, upload portable ZIP):
+
+```bash
+npm run release:win:auto
+```
+
+Optional flags:
+
+```bash
+npm run release:win:auto -- -Bump minor
+npm run release:win:auto -- -Version 0.2.0
+```
+
 Create/update the portable ZIP:
 
 ```bash

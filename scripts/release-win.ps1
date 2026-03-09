@@ -81,6 +81,11 @@ foreach ($cmd in @("npm", "git", "tar")) {
   }
 }
 
+$token = [string]$env:GH_TOKEN
+if (-not $token -or $token.Trim().Length -eq 0) {
+  throw "GH_TOKEN is not set. In PowerShell run: `$env:GH_TOKEN='your_github_token' and re-run npm run release:win:auto."
+}
+
 $requiredLocalBins = @("vite", "tsup", "electron-builder")
 $missingBins = @(Get-MissingLocalBins -RepoRoot $repoRoot -Names $requiredLocalBins)
 if ($missingBins.Count -gt 0) {
@@ -163,11 +168,6 @@ if (Test-Path $portableZipPath) {
 }
 
 Invoke-CheckedCommand -FilePath "tar" -Arguments @("-a", "-cf", $portableZipPath, "-C", $releaseDir, "win-unpacked") -Description "Create portable ZIP"
-
-$token = $env:GH_TOKEN
-if (-not $token) {
-  throw "GH_TOKEN is required to upload the ZIP asset."
-}
 
 $publishEntries = @($packageJson.build.publish)
 $githubPublishTarget = $publishEntries | Where-Object { $_.provider -eq "github" } | Select-Object -First 1

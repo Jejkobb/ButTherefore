@@ -175,7 +175,7 @@ function Upload-ReleaseAsset {
   }
 
   $uploadUrlBase = ([string]$Release.upload_url) -replace "\{\?name,label\}$", ""
-  $uploadUrl = "$uploadUrlBase?name=$([uri]::EscapeDataString($AssetName))"
+  $uploadUrl = "${uploadUrlBase}?name=$([uri]::EscapeDataString($AssetName))"
   $uploadHeaders = @{
     Authorization = [string]$Headers.Authorization
     Accept = [string]$Headers.Accept

@@ -43,33 +43,3 @@ npm run dev
 ```bash
 npm run build
 ```
-
-## Distribution (Installer for friends)
-Build a Windows installer without publishing:
-
-```bash
-npm run dist:win
-```
-
-Artifacts are written to `release/` (for example `ButTherefore-Setup-0.1.0.exe`).
-
-## Auto-update via GitHub Releases
-This project is configured to check for updates on app launch (packaged builds only) and download updates automatically.
-
-Release workflow:
-1. Bump the version in `package.json` (for example `0.1.0` -> `0.1.1`).
-2. Create a GitHub personal access token with repo permissions.
-3. Set it in PowerShell:
-
-```powershell
-$env:GH_TOKEN="your_github_token_here"
-```
-
-4. Publish the release:
-
-```bash
-npm run release:win
-```
-
-This command builds and publishes a GitHub Release for `Jejkobb/ButTherefore`, including updater metadata (`latest.yml`).
-When your friends launch the installed app, it will check GitHub for a newer version and prompt to restart after download.

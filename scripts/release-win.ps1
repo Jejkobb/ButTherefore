@@ -72,6 +72,134 @@ function Get-HttpStatusCode {
   }
 }
 
+function Get-CurrentCommitSha {
+  $sha = (& git rev-parse HEAD)
+  if ($LASTEXITCODE -ne 0) {
+    throw "Failed to resolve current git commit SHA."
+  }
+
+  $normalized = ($sha | Out-String).Trim()
+  if (-not $normalized) {
+    throw "Current git commit SHA is empty."
+  }
+
+  return $normalized
+}
+
+function Find-ReleaseByTagCandidates {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$ApiBase,
+    [Parameter(Mandatory = $true)]
+    [hashtable]$Headers,
+    [Parameter(Mandatory = $true)]
+    [string[]]$TagCandidates,
+    [int]$Attempts = 5,
+    [int]$DelaySeconds = 2
+  )
+
+  for ($attempt = 1; $attempt -le $Attempts; $attempt += 1) {
+    foreach ($tag in $TagCandidates) {
+      try {
+        return Invoke-RestMethod -Method Get -Uri "$ApiBase/releases/tags/$tag" -Headers $Headers
+      } catch {
+        $statusCode = Get-HttpStatusCode -ErrorRecord $_
+        if ($statusCode -ne 404) {
+          throw
+        }
+      }
+    }
+
+    if ($attempt -lt $Attempts) {
+      Start-Sleep -Seconds $DelaySeconds
+    }
+  }
+
+  return $null
+}
+
+function Ensure-GitHubRelease {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$ApiBase,
+    [Parameter(Mandatory = $true)]
+    [hashtable]$Headers,
+    [Parameter(Mandatory = $true)]
+    [string[]]$TagCandidates,
+    [Parameter(Mandatory = $true)]
+    [string]$Version,
+    [bool]$CreateAsDraft
+  )
+
+  $release = Find-ReleaseByTagCandidates -ApiBase $ApiBase -Headers $Headers -TagCandidates $TagCandidates
+  if ($release) {
+    return $release
+  }
+
+  $tagName = $TagCandidates[0]
+  $body = @{
+    tag_name = $tagName
+    target_commitish = Get-CurrentCommitSha
+    name = $tagName
+    draft = $CreateAsDraft
+    prerelease = $false
+    generate_release_notes = $false
+  } | ConvertTo-Json
+
+  try {
+    Write-Host "==> Creating GitHub release: $tagName"
+    return Invoke-RestMethod -Method Post -Uri "$ApiBase/releases" -Headers $Headers -ContentType "application/json" -Body $body
+  } catch {
+    $statusCode = Get-HttpStatusCode -ErrorRecord $_
+    if ($statusCode -eq 422) {
+      # Another process may have created the release concurrently; fetch again.
+      $release = Find-ReleaseByTagCandidates -ApiBase $ApiBase -Headers $Headers -TagCandidates $TagCandidates -Attempts 3 -DelaySeconds 2
+      if ($release) {
+        return $release
+      }
+    }
+    throw
+  }
+}
+
+function Upload-ReleaseAsset {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$ApiBase,
+    [Parameter(Mandatory = $true)]
+    [hashtable]$Headers,
+    [Parameter(Mandatory = $true)]
+    [object]$Release,
+    [Parameter(Mandatory = $true)]
+    [string]$AssetPath,
+    [Parameter(Mandatory = $true)]
+    [string]$AssetName,
+    [string]$ContentType = "application/octet-stream"
+  )
+
+  if (-not (Test-Path $AssetPath)) {
+    throw "Asset file not found: $AssetPath"
+  }
+
+  $existingAsset = @($Release.assets) | Where-Object { $_.name -eq $AssetName } | Select-Object -First 1
+  if ($existingAsset) {
+    Invoke-RestMethod -Method Delete -Uri "$ApiBase/releases/assets/$($existingAsset.id)" -Headers $Headers | Out-Null
+  }
+
+  $uploadUrlBase = ([string]$Release.upload_url) -replace "\{\?name,label\}$", ""
+  $uploadUrl = "$uploadUrlBase?name=$([uri]::EscapeDataString($AssetName))"
+  $uploadHeaders = @{
+    Authorization = [string]$Headers.Authorization
+    Accept = [string]$Headers.Accept
+    "X-GitHub-Api-Version" = [string]$Headers."X-GitHub-Api-Version"
+    "User-Agent" = [string]$Headers."User-Agent"
+    "Content-Type" = $ContentType
+  }
+
+  Write-Host "==> Uploading asset: $AssetName"
+  return Invoke-RestMethod -Method Post -Uri $uploadUrl -Headers $uploadHeaders -InFile $AssetPath
+}
+
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $repoRoot
 
@@ -140,14 +268,15 @@ if (-not $SkipCommit) {
   if ($LASTEXITCODE -ne 0) {
     throw "Failed to read staged files."
   }
+
   if (-not $stagedFiles -or ($stagedFiles | Out-String).Trim().Length -eq 0) {
-    throw "No staged changes found for commit."
-  }
+    Write-Host "==> No staged version changes. Skipping commit and push."
+  } else {
+    Invoke-CheckedCommand -FilePath "git" -Arguments @("commit", "-m", "release: v$nextVersion") -Description "Commit version bump"
 
-  Invoke-CheckedCommand -FilePath "git" -Arguments @("commit", "-m", "release: v$nextVersion") -Description "Commit version bump"
-
-  if (-not $SkipPush) {
-    Invoke-CheckedCommand -FilePath "git" -Arguments @("push") -Description "Push release commit"
+    if (-not $SkipPush) {
+      Invoke-CheckedCommand -FilePath "git" -Arguments @("push") -Description "Push release commit"
+    }
   }
 } elseif (-not $SkipPush) {
   Write-Host "==> SkipCommit is set; skipping push."
@@ -189,41 +318,68 @@ $githubHeaders = @{
   "User-Agent" = "buttherefore-release-script"
 }
 
-$release = $null
 $tagCandidates = @("v$nextVersion", $nextVersion) | Select-Object -Unique
-foreach ($tag in $tagCandidates) {
-  try {
-    $release = Invoke-RestMethod -Method Get -Uri "$apiBase/releases/tags/$tag" -Headers $githubHeaders
-    break
-  } catch {
-    $statusCode = Get-HttpStatusCode -ErrorRecord $_
-    if ($statusCode -ne 404) {
-      throw
-    }
-  }
-}
+$release = Ensure-GitHubRelease -ApiBase $apiBase -Headers $githubHeaders -TagCandidates $tagCandidates -Version $nextVersion -CreateAsDraft ([bool]$KeepDraft)
 
-if (-not $release) {
-  throw "Could not find GitHub release for tags: $($tagCandidates -join ', ')."
+$productName = [string]$packageJson.build.productName
+if (-not $productName) {
+  $productName = "ButTherefore"
 }
+$setupExeName = "$productName-Setup-$nextVersion.exe"
+$setupExePath = Join-Path $releaseDir $setupExeName
+$setupBlockmapName = "$setupExeName.blockmap"
+$setupBlockmapPath = Join-Path $releaseDir $setupBlockmapName
+$latestYmlName = "latest.yml"
+$latestYmlPath = Join-Path $releaseDir $latestYmlName
 
 $portableZipName = [System.IO.Path]::GetFileName($portableZipPath)
-$existingAsset = @($release.assets) | Where-Object { $_.name -eq $portableZipName } | Select-Object -First 1
-if ($existingAsset) {
-  Invoke-RestMethod -Method Delete -Uri "$apiBase/releases/assets/$($existingAsset.id)" -Headers $githubHeaders | Out-Null
-}
+$assetsToUpload = @(
+  @{
+    Name = $setupExeName
+    Path = $setupExePath
+    Required = $true
+    ContentType = "application/vnd.microsoft.portable-executable"
+  },
+  @{
+    Name = $setupBlockmapName
+    Path = $setupBlockmapPath
+    Required = $false
+    ContentType = "application/octet-stream"
+  },
+  @{
+    Name = $latestYmlName
+    Path = $latestYmlPath
+    Required = $true
+    ContentType = "application/x-yaml"
+  },
+  @{
+    Name = $portableZipName
+    Path = $portableZipPath
+    Required = $true
+    ContentType = "application/zip"
+  }
+)
 
-$uploadUrlBase = ([string]$release.upload_url) -replace "\{\?name,label\}$", ""
-$uploadUrl = "$uploadUrlBase?name=$([uri]::EscapeDataString($portableZipName))"
-$uploadHeaders = @{
-  Authorization = "Bearer $token"
-  Accept = "application/vnd.github+json"
-  "X-GitHub-Api-Version" = "2022-11-28"
-  "User-Agent" = "buttherefore-release-script"
-  "Content-Type" = "application/zip"
-}
+$uploadedZipAsset = $null
+foreach ($asset in $assetsToUpload) {
+  $name = [string]$asset.Name
+  $path = [string]$asset.Path
+  $required = [bool]$asset.Required
+  $contentType = [string]$asset.ContentType
 
-$uploadedAsset = Invoke-RestMethod -Method Post -Uri $uploadUrl -Headers $uploadHeaders -InFile $portableZipPath
+  if (-not (Test-Path $path)) {
+    if ($required) {
+      throw "Required release asset not found: $path"
+    }
+    Write-Host "==> Optional asset not found, skipping: $name"
+    continue
+  }
+
+  $uploaded = Upload-ReleaseAsset -ApiBase $apiBase -Headers $githubHeaders -Release $release -AssetPath $path -AssetName $name -ContentType $contentType
+  if ($name -eq $portableZipName) {
+    $uploadedZipAsset = $uploaded
+  }
+}
 
 if (-not $KeepDraft) {
   $publishBody = @{
@@ -235,13 +391,8 @@ if (-not $KeepDraft) {
 }
 
 $tagName = [string]$release.tag_name
-$productName = [string]$packageJson.build.productName
-if (-not $productName) {
-  $productName = "ButTherefore"
-}
-$setupExeName = "$productName-Setup-$nextVersion.exe"
 $setupUrl = "https://github.com/$owner/$repo/releases/download/$tagName/$setupExeName"
-$zipUrl = [string]$uploadedAsset.browser_download_url
+$zipUrl = if ($uploadedZipAsset) { [string]$uploadedZipAsset.browser_download_url } else { "https://github.com/$owner/$repo/releases/download/$tagName/$portableZipName" }
 
 Write-Host ""
 Write-Host "Release complete."

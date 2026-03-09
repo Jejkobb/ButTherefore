@@ -31,6 +31,33 @@ function Read-PackageJson {
   return Get-Content $Path -Raw | ConvertFrom-Json
 }
 
+function Get-MissingLocalBins {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$RepoRoot,
+    [Parameter(Mandatory = $true)]
+    [string[]]$Names
+  )
+
+  $binDir = Join-Path $RepoRoot "node_modules/.bin"
+  $missing = @()
+
+  foreach ($name in $Names) {
+    $found = $false
+    foreach ($candidate in @("$name.cmd", "$name.ps1", $name)) {
+      if (Test-Path (Join-Path $binDir $candidate)) {
+        $found = $true
+        break
+      }
+    }
+    if (-not $found) {
+      $missing += $name
+    }
+  }
+
+  return $missing
+}
+
 function Get-HttpStatusCode {
   param([Parameter(Mandatory = $true)]$ErrorRecord)
   $response = $ErrorRecord.Exception.Response
@@ -51,6 +78,17 @@ Set-Location $repoRoot
 foreach ($cmd in @("npm", "git", "tar")) {
   if (-not (Get-Command $cmd -ErrorAction SilentlyContinue)) {
     throw "Required command '$cmd' is not available in PATH."
+  }
+}
+
+$requiredLocalBins = @("vite", "tsup", "electron-builder")
+$missingBins = @(Get-MissingLocalBins -RepoRoot $repoRoot -Names $requiredLocalBins)
+if ($missingBins.Count -gt 0) {
+  Write-Host "==> Missing local tool(s): $($missingBins -join ', ')"
+  Invoke-CheckedCommand -FilePath "npm" -Arguments @("ci", "--include=dev") -Description "Install project dependencies (including dev dependencies)"
+  $missingBins = @(Get-MissingLocalBins -RepoRoot $repoRoot -Names $requiredLocalBins)
+  if ($missingBins.Count -gt 0) {
+    throw "Missing required local tools after install: $($missingBins -join ', ')."
   }
 }
 

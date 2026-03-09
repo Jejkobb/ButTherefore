@@ -1,23 +1,22 @@
 # ButTherefore
 
-ButTherefore is a desktop story-mapping app for outlining scenes as connected visual beats.
+Storytelling software that helps you keep plots engaging using the power of `BUT` and `THEREFORE`.
 
-You can place beats on a canvas, connect them with `BUT`/`THEREFORE` logic, add post-it notes, and work with images while keeping project files simple.
+Inspired by the writing advice from Matt Stone and Trey Parker, the app is built around cause-and-effect storytelling instead of flat "and then" scene chains. Each beat should either introduce a complication (`BUT`) or create a consequence (`THEREFORE`) so your story keeps moving with tension and momentum.
+
+Watch the reference clip: [South Park creators' story advice (YouTube)](https://www.youtube.com/watch?v=vGUNqq3jVLg)
+
+![ButTherefore app screenshot](./screenshot.PNG)
 
 ## What The App Does
 - Infinite zoomable canvas for story structure.
-- Story beat nodes with editable beat lines.
-- Relationship edges with a clickable `BUT` / `THEREFORE` toggle.
-- Post-it note nodes for freeform notes.
-- Image nodes you can place on the canvas, resize, or dock into story beats.
-- Drag from a beat connector to empty canvas to auto-create a connected beat.
-- Undo/redo for create, move, edit, resize, connect, and delete actions.
-- Built-in light/dark theme toggle.
-- Startup screen with:
-  - New/Open project actions
-  - Recent projects list
-  - Update status and "Check for updates" action (packaged app)
-- Autosave support in app data, plus normal Save/Save As files.
+- Beat nodes with editable text and visual connections.
+- Clickable edge labels to switch between `BUT` and `THEREFORE`.
+- Post-it notes and image nodes for supporting context.
+- Quick node creation by dragging from a connector onto empty canvas.
+- Undo/redo across creation, editing, movement, resize, connect, and delete actions.
+- Startup screen for new/open/recent projects and packaged-app update status.
+- Autosave plus standard Save/Save As project files.
 
 ## Install (Windows)
 

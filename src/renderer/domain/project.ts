@@ -36,6 +36,7 @@ interface NormalizedProjectNode {
 }
 
 const DEFAULT_VIEWPORT: Viewport = { x: 0, y: 0, zoom: 1 };
+const DEFAULT_POSTIT_Z_INDEX = 10_000;
 
 function toNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
@@ -270,7 +271,7 @@ export function projectToDocument(project: StoryProjectFile, runtimeAssets: Runt
         id: node.id,
         type: "postItNode",
         position: node.position,
-        ...(node.zIndex !== undefined ? { zIndex: node.zIndex } : {}),
+        zIndex: node.zIndex ?? DEFAULT_POSTIT_Z_INDEX,
         ...(node.size ? { style: { width: node.size.width, height: node.size.height } } : {}),
         data: normalizePostItNodeData(node.data)
       });

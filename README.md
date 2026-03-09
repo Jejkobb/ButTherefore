@@ -12,7 +12,7 @@ Watch the reference clip: [South Park creators' story advice (YouTube)](https://
 - Infinite zoomable canvas for story structure.
 - Beat nodes with editable text and visual connections.
 - Clickable edge labels to switch between `BUT` and `THEREFORE`.
-- Post-it notes and image nodes for supporting context.
+- Notes and image nodes for supporting context.
 - Quick node creation by dragging from a connector onto empty canvas.
 - Undo/redo across creation, editing, movement, resize, connect, and delete actions.
 - Startup screen for new/open/recent projects and packaged-app update status.

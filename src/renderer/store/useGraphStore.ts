@@ -78,6 +78,7 @@ interface GraphStore {
 }
 
 const empty = createEmptyProject();
+const DEFAULT_POSTIT_Z_INDEX = 10_000;
 const DEFAULT_IMAGE_NODE_WIDTH = 180;
 const DEFAULT_IMAGE_NODE_HEIGHT = 120;
 const MIN_IMAGE_NODE_WIDTH = 92;
@@ -151,6 +152,7 @@ function createPostItNodeTemplate(position: XYPosition): PostItFlowNode {
     id: crypto.randomUUID(),
     type: "postItNode",
     position,
+    zIndex: DEFAULT_POSTIT_Z_INDEX,
     style: {
       width: 280,
       height: 260
@@ -378,10 +380,16 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
           .map((node) => node.id)
       );
       const filteredChanges = changes.filter((change) => !("id" in change) || !blockedIds.has(change.id));
+      const nextNodes = applyNodeChanges(filteredChanges, state.doc.nodes).map((node) => {
+        if (isPostItNode(node) && node.zIndex === undefined) {
+          return { ...node, zIndex: DEFAULT_POSTIT_Z_INDEX };
+        }
+        return node;
+      });
       return {
         doc: {
           ...state.doc,
-          nodes: applyNodeChanges(filteredChanges, state.doc.nodes)
+          nodes: nextNodes
         }
       };
     });
@@ -455,7 +463,9 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
     }, {});
     const imageDimensions = await Promise.all(importedAssets.map((asset) => readImageDimensions(asset.uri)));
     const currentDoc = get().doc;
-    const baseZIndex = currentDoc.nodes.reduce((maxZ, node) => Math.max(maxZ, node.zIndex ?? 0), 0);
+    const baseZIndex = currentDoc.nodes
+      .filter((node) => !isPostItNode(node))
+      .reduce((maxZ, node) => Math.max(maxZ, node.zIndex ?? 0), 0);
     const imageNodes = importedAssets.map((asset, index) => {
       const size = computeStandaloneImageSize(imageDimensions[index] ?? null);
       return {

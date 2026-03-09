@@ -342,7 +342,7 @@ function Editor() {
       },
       {
         id: "postit",
-        title: "Post-it Note",
+        title: "Note",
         description: "Standalone lined note that does not connect",
         action: createPostItAtViewportCenter,
         icon: StickyNote
@@ -668,7 +668,7 @@ function Editor() {
                 </button>
                 <button onClick={() => runMenuAction(createPostItAtViewportCenter)} type="button">
                   <StickyNote size={14} aria-hidden="true" />
-                  <span>Post-it</span>
+                  <span>Note</span>
                 </button>
                 <button onClick={() => runMenuAction(createImageAtViewportCenter)} type="button">
                   <ImagePlus size={14} aria-hidden="true" />

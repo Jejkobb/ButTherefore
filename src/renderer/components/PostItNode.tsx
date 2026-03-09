@@ -278,7 +278,7 @@ export const PostItNode = memo(function PostItNode({ id, data }: NodeProps<PostI
               resizeNoteField(event.currentTarget);
               growNodeToFitContent();
             }}
-            placeholder="Post-it note..."
+            placeholder="Note..."
             rows={8}
             spellCheck={false}
             onInput={(event) => {
@@ -305,7 +305,7 @@ export const PostItNode = memo(function PostItNode({ id, data }: NodeProps<PostI
             }}
             title="Double-click to edit"
           >
-            {data.note || "Post-it note..."}
+            {data.note || "Note..."}
           </div>
         )}
       </div>

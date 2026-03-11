@@ -127,6 +127,35 @@ function detectMimeType(filePath: string): string {
   return "application/octet-stream";
 }
 
+function extensionFromMimeType(mimeType: string): string {
+  const normalized = mimeType.toLowerCase();
+  if (normalized === "image/png") return ".png";
+  if (normalized === "image/jpeg") return ".jpg";
+  if (normalized === "image/webp") return ".webp";
+  if (normalized === "image/gif") return ".gif";
+  if (normalized === "image/bmp") return ".bmp";
+  return ".bin";
+}
+
+function sanitizeFileName(fileName: string): string {
+  const normalized = path.basename(fileName).replace(/[\\/:*?"<>|]/g, "-").trim();
+  return normalized.length > 0 ? normalized : `asset-${Date.now()}`;
+}
+
+function dataUrlToBuffer(dataUrl: string): { mimeType: string; data: Buffer } {
+  const match = /^data:([^;,]+)?(;base64)?,(.*)$/u.exec(dataUrl);
+  if (!match) {
+    throw new Error("Invalid data URL.");
+  }
+
+  const mimeType = match[1] || "application/octet-stream";
+  const isBase64 = Boolean(match[2]);
+  const payload = match[3] || "";
+  const data = isBase64 ? Buffer.from(payload, "base64") : Buffer.from(decodeURIComponent(payload), "latin1");
+
+  return { mimeType, data };
+}
+
 async function ensureDir(dirPath: string): Promise<void> {
   await fs.mkdir(dirPath, { recursive: true });
 }
@@ -557,6 +586,30 @@ function registerIpc(): void {
       fileName: path.basename(sourcePath),
       relativePath,
       mimeType: detectMimeType(sourcePath),
+      absolutePath: targetPath,
+      uri: buildAssetUri(assetId)
+    };
+  });
+
+  ipcMain.handle("project:importDataAsset", async (_event, dataUrl: string, fileName: string): Promise<RuntimeStoryAsset> => {
+    await ensureDir(workspaceAssetsDir);
+
+    const normalizedFileName = sanitizeFileName(fileName);
+    const { mimeType, data } = dataUrlToBuffer(dataUrl);
+    const ext = path.extname(normalizedFileName) || extensionFromMimeType(mimeType);
+    const relativePath = `${randomUUID()}${ext}`;
+    const targetPath = path.join(workspaceAssetsDir, relativePath);
+
+    await fs.writeFile(targetPath, data);
+
+    const assetId = randomUUID();
+    assetPathIndex.set(assetId, targetPath);
+
+    return {
+      id: assetId,
+      fileName: normalizedFileName,
+      relativePath,
+      mimeType,
       absolutePath: targetPath,
       uri: buildAssetUri(assetId)
     };

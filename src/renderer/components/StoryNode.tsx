@@ -1,6 +1,8 @@
 import { memo, useCallback, useEffect, useRef, useState, type DragEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { Handle, Position, useReactFlow, useUpdateNodeInternals, type NodeProps } from "@xyflow/react";
+import { ImagePlus, PencilLine, Plus } from "lucide-react";
 import type { StoryNodeData } from "@/shared/types";
+import { DrawingComposer } from "@/renderer/components/DrawingComposer";
 import { useGraphStore } from "@/renderer/store/useGraphStore";
 
 function fileUriToPath(uri: string): string | null {
@@ -260,8 +262,12 @@ function enforceMinimumInNodeImageHeight(
 export const StoryNode = memo(function StoryNode({ id, data }: NodeProps<StoryNodeData>) {
   const [isDragOver, setIsDragOver] = useState(false);
   const [editingBeatIndex, setEditingBeatIndex] = useState<number | null>(null);
+  const [isAttachmentMenuOpen, setIsAttachmentMenuOpen] = useState(false);
+  const [isDrawingComposerOpen, setIsDrawingComposerOpen] = useState(false);
+  const [isSavingDrawing, setIsSavingDrawing] = useState(false);
   const beatRefs = useRef<Map<number, HTMLTextAreaElement>>(new Map());
   const nodeSurfaceRef = useRef<HTMLDivElement | null>(null);
+  const attachmentMenuRef = useRef<HTMLDivElement | null>(null);
   const pendingInternalsFrame = useRef<number | null>(null);
   const resizeSessionRef = useRef<ResizeSession | null>(null);
   const flow = useReactFlow();
@@ -269,6 +275,7 @@ export const StoryNode = memo(function StoryNode({ id, data }: NodeProps<StoryNo
 
   const updateBeatLine = useGraphStore((state) => state.updateBeatLine);
   const attachImagesToNode = useGraphStore((state) => state.attachImagesToNode);
+  const attachDrawingToNode = useGraphStore((state) => state.attachDrawingToNode);
   const setHoveredStoryNodeId = useGraphStore((state) => state.setHoveredStoryNodeId);
   const attachedImageCount = useGraphStore(
     (state) => state.doc.nodes.filter((node) => node.type === "imageNode" && node.parentId === id).length
@@ -278,6 +285,27 @@ export const StoryNode = memo(function StoryNode({ id, data }: NodeProps<StoryNo
     if (paths.length === 0) return;
     await attachImagesToNode(id, paths);
   };
+
+  const openImagePicker = useCallback(async () => {
+    setIsAttachmentMenuOpen(false);
+    const filePaths = await window.storyBridge.pickImageFiles();
+    await importImagePaths(filePaths);
+  }, [importImagePaths]);
+
+  const openDrawingComposer = useCallback(() => {
+    setIsAttachmentMenuOpen(false);
+    setIsDrawingComposerOpen(true);
+  }, []);
+
+  const saveDrawing = useCallback(async (dataUrl: string) => {
+    setIsSavingDrawing(true);
+    try {
+      await attachDrawingToNode(id, dataUrl);
+      setIsDrawingComposerOpen(false);
+    } finally {
+      setIsSavingDrawing(false);
+    }
+  }, [attachDrawingToNode, id]);
 
   const scheduleNodeInternalsUpdate = useCallback(() => {
     if (pendingInternalsFrame.current !== null) return;
@@ -427,6 +455,33 @@ export const StoryNode = memo(function StoryNode({ id, data }: NodeProps<StoryNo
   useEffect(() => {
     syncAttachedImagesToFrame();
   }, [attachedImageCount, syncAttachedImagesToFrame]);
+
+  useEffect(() => {
+    if (!isAttachmentMenuOpen) return;
+
+    const onPointerDown = (event: PointerEvent) => {
+      if (!attachmentMenuRef.current) return;
+      const target = event.target;
+      if (target instanceof Node && attachmentMenuRef.current.contains(target)) {
+        return;
+      }
+      setIsAttachmentMenuOpen(false);
+    };
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsAttachmentMenuOpen(false);
+      }
+    };
+
+    window.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [isAttachmentMenuOpen]);
 
   useEffect(() => {
     if (editingBeatIndex === null) return;
@@ -670,7 +725,7 @@ export const StoryNode = memo(function StoryNode({ id, data }: NodeProps<StoryNo
 
   return (
     <div
-      className={`story-node-shell ${isDragOver ? "is-drag-over" : ""}`}
+      className={`story-node-shell ${isDragOver ? "is-drag-over" : ""} ${isAttachmentMenuOpen ? "has-attachment-menu-open" : ""}`}
       onPointerEnter={() => {
         setHoveredStoryNodeId(id);
       }}
@@ -748,18 +803,46 @@ export const StoryNode = memo(function StoryNode({ id, data }: NodeProps<StoryNo
         </div>
         <Handle className="story-handle story-handle--right" type="source" position={Position.Right} id="out" />
       </div>
-      <button
-        className="story-node__image-fab nodrag nopan"
-        onClick={async () => {
-          const filePaths = await window.storyBridge.pickImageFiles();
-          await importImagePaths(filePaths);
+      <div className="story-node__attachment" ref={attachmentMenuRef}>
+        <button
+          className="story-node__image-fab nodrag nopan"
+          onPointerDown={(event) => {
+            event.stopPropagation();
+          }}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            setIsAttachmentMenuOpen((current) => !current);
+          }}
+          type="button"
+          aria-label="Add attachment"
+          title="Add attachment"
+        >
+          <Plus size={14} aria-hidden="true" />
+        </button>
+        {isAttachmentMenuOpen ? (
+          <div className="story-node__attachment-menu nodrag nopan" role="menu" aria-label="Add attachment">
+            <button className="nodrag nopan" type="button" onClick={() => void openImagePicker()}>
+              <ImagePlus size={14} aria-hidden="true" />
+              <span>Image</span>
+            </button>
+            <button className="nodrag nopan" type="button" onClick={openDrawingComposer}>
+              <PencilLine size={14} aria-hidden="true" />
+              <span>Drawing</span>
+            </button>
+          </div>
+        ) : null}
+      </div>
+      <DrawingComposer
+        open={isDrawingComposerOpen}
+        busy={isSavingDrawing}
+        onClose={() => {
+          if (!isSavingDrawing) {
+            setIsDrawingComposerOpen(false);
+          }
         }}
-        type="button"
-        aria-label="Add image"
-        title="Add image"
-      >
-        +
-      </button>
+        onSave={saveDrawing}
+      />
     </div>
   );
 });

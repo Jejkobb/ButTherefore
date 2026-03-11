@@ -1,7 +1,8 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { useReactFlow, useUpdateNodeInternals, type NodeProps } from "@xyflow/react";
-import { X } from "lucide-react";
+import { PencilLine, X } from "lucide-react";
 import type { ImageNodeData } from "@/shared/types";
+import { DrawingComposer } from "@/renderer/components/DrawingComposer";
 import { useGraphStore } from "@/renderer/store/useGraphStore";
 
 const MIN_IMAGE_WIDTH = 92;
@@ -39,6 +40,7 @@ export const ImageNode = memo(function ImageNode({ id, data, parentId }: NodePro
   const asset = useGraphStore((state) => state.doc.assets[data.assetId]);
   const imageNode = useGraphStore((state) => state.doc.nodes.find((candidate) => candidate.id === id));
   const removeImageNode = useGraphStore((state) => state.removeImageNode);
+  const replaceImageNodeDrawing = useGraphStore((state) => state.replaceImageNodeDrawing);
   const hoveredStoryNodeId = useGraphStore((state) => state.hoveredStoryNodeId);
   const flow = useReactFlow();
   const updateNodeInternals = useUpdateNodeInternals();
@@ -47,12 +49,17 @@ export const ImageNode = memo(function ImageNode({ id, data, parentId }: NodePro
   const naturalAspectRatioRef = useRef<number | null>(null);
   const [naturalAspectRatio, setNaturalAspectRatio] = useState<number | null>(null);
   const [isDeleteHovered, setIsDeleteHovered] = useState(false);
+  const [isEditHovered, setIsEditHovered] = useState(false);
+  const [isDrawingEditorOpen, setIsDrawingEditorOpen] = useState(false);
+  const [isSavingDrawingEdit, setIsSavingDrawingEdit] = useState(false);
+  const [editorSeedSrc, setEditorSeedSrc] = useState<string | null>(null);
   const parentStoryId = parentId ?? imageNode?.parentId ?? null;
   const isParented = Boolean(parentStoryId);
+  const isDrawing = Boolean(asset && asset.fileName.toLowerCase().startsWith("drawing-"));
   const nodeSize = imageNode ? readNodeSize(imageNode) : { width: MIN_IMAGE_WIDTH, height: MIN_IMAGE_HEIGHT };
-  const showDelete = isParented && (hoveredStoryNodeId === parentStoryId || isDeleteHovered);
+  const showActions = isParented && (hoveredStoryNodeId === parentStoryId || isDeleteHovered || isEditHovered || isDrawingEditorOpen);
 
-  const deleteButtonStyle = useMemo<CSSProperties | undefined>(() => {
+  const actionInsetStyle = useMemo<CSSProperties | undefined>(() => {
     if (!isParented) return undefined;
     const ratio = naturalAspectRatio ?? naturalAspectRatioRef.current;
     if (!ratio || nodeSize.width <= 0 || nodeSize.height <= 0) return undefined;
@@ -75,6 +82,16 @@ export const ImageNode = memo(function ImageNode({ id, data, parentId }: NodePro
     };
   }, [isParented, naturalAspectRatio, nodeSize.height, nodeSize.width]);
 
+  const deleteButtonStyle = actionInsetStyle;
+  const editButtonStyle = useMemo<CSSProperties | undefined>(() => {
+    if (!actionInsetStyle) return undefined;
+    const right = typeof actionInsetStyle.right === "number" ? actionInsetStyle.right + 24 : undefined;
+    return {
+      ...actionInsetStyle,
+      right
+    };
+  }, [actionInsetStyle]);
+
   const scheduleNodeInternalsUpdate = useCallback(() => {
     if (pendingInternalsFrame.current !== null) return;
 
@@ -96,6 +113,23 @@ export const ImageNode = memo(function ImageNode({ id, data, parentId }: NodePro
       }
     };
   }, []);
+
+  const openDrawingEditor = useCallback(() => {
+    if (!isDrawing || !asset) return;
+    setEditorSeedSrc(asset.uri);
+    setIsDrawingEditorOpen(true);
+  }, [asset, isDrawing]);
+
+  const saveDrawingEdit = useCallback(async (dataUrl: string) => {
+    setIsSavingDrawingEdit(true);
+    try {
+      await replaceImageNodeDrawing(id, dataUrl);
+      setIsDrawingEditorOpen(false);
+      setEditorSeedSrc(null);
+    } finally {
+      setIsSavingDrawingEdit(false);
+    }
+  }, [id, replaceImageNodeDrawing]);
 
   const applyLiveResize = useCallback((next: NodeRectSnapshot) => {
     useGraphStore.setState((state) => {
@@ -291,9 +325,32 @@ export const ImageNode = memo(function ImageNode({ id, data, parentId }: NodePro
         ) : (
           <div className="image-node__missing">Missing image</div>
         )}
+        {isParented && isDrawing ? (
+          <button
+            className={`image-node__edit nodrag nopan ${showActions ? "is-visible" : ""}`}
+            style={editButtonStyle}
+            type="button"
+            data-parent-story-id={parentStoryId ?? undefined}
+            aria-label="Edit drawing"
+            title="Edit drawing"
+            onPointerEnter={() => setIsEditHovered(true)}
+            onPointerLeave={() => setIsEditHovered(false)}
+            onPointerDown={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+            }}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              openDrawingEditor();
+            }}
+          >
+            <PencilLine size={11} aria-hidden="true" />
+          </button>
+        ) : null}
         {isParented ? (
           <button
-            className={`image-node__delete nodrag nopan ${showDelete ? "is-visible" : ""}`}
+            className={`image-node__delete nodrag nopan ${showActions ? "is-visible" : ""}`}
             style={deleteButtonStyle}
             type="button"
             data-parent-story-id={parentStoryId ?? undefined}
@@ -315,6 +372,18 @@ export const ImageNode = memo(function ImageNode({ id, data, parentId }: NodePro
           </button>
         ) : null}
       </div>
+      <DrawingComposer
+        open={isDrawingEditorOpen}
+        busy={isSavingDrawingEdit}
+        initialImageSrc={editorSeedSrc}
+        onClose={() => {
+          if (!isSavingDrawingEdit) {
+            setIsDrawingEditorOpen(false);
+            setEditorSeedSrc(null);
+          }
+        }}
+        onSave={saveDrawingEdit}
+      />
     </div>
   );
 });

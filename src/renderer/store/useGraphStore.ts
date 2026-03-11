@@ -65,6 +65,8 @@ interface GraphStore {
   removeBeatLine: (nodeId: string, index: number) => void;
   toggleEdgeRelation: (edgeId: string) => void;
   attachImagesToNode: (nodeId: string, filePaths: string[]) => Promise<void>;
+  attachDrawingToNode: (nodeId: string, dataUrl: string) => Promise<void>;
+  replaceImageNodeDrawing: (nodeId: string, dataUrl: string) => Promise<void>;
   dockImageNodesToStoryNodes: (nodeIds: string[]) => void;
   removeImageNode: (nodeId: string) => Promise<void>;
   removeImageFromNode: (nodeId: string, assetId: string) => Promise<void>;
@@ -177,6 +179,76 @@ function createImageNodeTemplate(assetId: string, position: XYPosition, parentId
     },
     data: {
       assetId
+    }
+  };
+}
+
+function createAttachAssetsToStoryNodeCommand(
+  nodeId: string,
+  importedAssets: RuntimeStoryAsset[],
+  label: string
+): GraphCommand | null {
+  if (importedAssets.length === 0) return null;
+
+  const imageAssetIds = importedAssets.map((asset) => asset.id);
+  const importedAssetMap = importedAssets.reduce<Record<string, RuntimeStoryAsset>>((acc, asset) => {
+    acc[asset.id] = asset;
+    return acc;
+  }, {});
+  const imageNodes = imageAssetIds.map((assetId) => createImageNodeTemplate(assetId, { x: 0, y: 0 }, nodeId, false));
+  const imageNodeIds = new Set(imageNodes.map((node) => node.id));
+
+  return {
+    label,
+    redo: (doc) => {
+      const targetStory = doc.nodes.find((node): node is StoryFlowNode => node.id === nodeId && isStoryNode(node));
+      const targetStorySize = targetStory ? readNodeSize(targetStory) : { width: 0, height: 0 };
+      const targetWidth = Math.max(targetStorySize.width, DEFAULT_IMAGE_NODE_WIDTH);
+      const targetHeight = Math.max(targetStorySize.height, DEFAULT_IMAGE_NODE_HEIGHT);
+
+      const nextNodes = doc.nodes.map((node) => {
+        if (node.id !== nodeId || !isStoryNode(node)) return node;
+        return {
+          ...node,
+          style: {
+            ...(node.style ?? {}),
+            width: targetWidth,
+            height: targetHeight
+          }
+        };
+      });
+
+      const normalizedImageNodes = imageNodes.map((node) => ({
+        ...node,
+        position: { x: 0, y: 0 },
+        draggable: false,
+        style: {
+          ...(node.style ?? {}),
+          width: targetWidth,
+          height: targetHeight
+        }
+      }));
+
+      return {
+        ...doc,
+        assets: {
+          ...doc.assets,
+          ...importedAssetMap
+        },
+        nodes: [...nextNodes, ...normalizedImageNodes]
+      };
+    },
+    undo: (doc) => {
+      const nextAssets = { ...doc.assets };
+      for (const assetId of imageAssetIds) {
+        delete nextAssets[assetId];
+      }
+
+      return {
+        ...doc,
+        assets: nextAssets,
+        nodes: doc.nodes.filter((node) => !imageNodeIds.has(node.id))
+      };
     }
   };
 }
@@ -817,63 +889,70 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
       importedAssets.push(imported);
     }
 
-    const imageAssetIds = importedAssets.map((asset) => asset.id);
-    const importedAssetMap = importedAssets.reduce<Record<string, RuntimeStoryAsset>>((acc, asset) => {
-      acc[asset.id] = asset;
-      return acc;
-    }, {});
-    const imageNodes = imageAssetIds.map((assetId) => createImageNodeTemplate(assetId, { x: 0, y: 0 }, nodeId, false));
+    const command = createAttachAssetsToStoryNodeCommand(nodeId, importedAssets, "Attach Images");
+    if (!command) return;
+    get().executeCommand(command);
+  },
+
+  attachDrawingToNode: async (nodeId, dataUrl) => {
+    const currentNode = get().doc.nodes.find((node) => node.id === nodeId);
+    if (!currentNode || !isStoryNode(currentNode)) return;
+
+    const drawingName = `drawing-${new Date().toISOString().replace(/[:.]/g, "-")}.png`;
+    const imported = await window.storyBridge.importDataAsset(dataUrl, drawingName);
+    const command = createAttachAssetsToStoryNodeCommand(nodeId, [imported], "Attach Drawing");
+    if (!command) return;
+    get().executeCommand(command);
+  },
+
+  replaceImageNodeDrawing: async (nodeId, dataUrl) => {
+    const currentNode = get().doc.nodes.find((node): node is ImageFlowNode => node.id === nodeId && isImageNode(node));
+    if (!currentNode) return;
+
+    const previousAssetId = currentNode.data.assetId;
+    const previousAsset = get().doc.assets[previousAssetId];
+    const drawingName = previousAsset?.fileName?.trim().length
+      ? previousAsset.fileName
+      : `drawing-${new Date().toISOString().replace(/[:.]/g, "-")}.png`;
+
+    const imported = await window.storyBridge.importDataAsset(dataUrl, drawingName);
 
     get().executeCommand({
-      label: "Attach Images",
-      redo: (doc) => {
-        const targetStory = doc.nodes.find((node): node is StoryFlowNode => node.id === nodeId && isStoryNode(node));
-        const targetStorySize = targetStory ? readNodeSize(targetStory) : { width: 0, height: 0 };
-        const targetWidth = Math.max(targetStorySize.width, DEFAULT_IMAGE_NODE_WIDTH);
-        const targetHeight = Math.max(targetStorySize.height, DEFAULT_IMAGE_NODE_HEIGHT);
-
-        const nextNodes = doc.nodes.map((node) => {
-          if (node.id !== nodeId || !isStoryNode(node)) return node;
+      label: "Edit Drawing",
+      redo: (doc) => ({
+        ...doc,
+        assets: {
+          ...doc.assets,
+          [imported.id]: imported
+        },
+        nodes: doc.nodes.map((node) => {
+          if (node.id !== nodeId || !isImageNode(node)) return node;
           return {
             ...node,
-            style: {
-              ...(node.style ?? {}),
-              width: targetWidth,
-              height: targetHeight
+            data: {
+              ...node.data,
+              assetId: imported.id
             }
           };
-        });
-
-        const normalizedImageNodes = imageNodes.map((node) => ({
-          ...node,
-          position: { x: 0, y: 0 },
-          draggable: false,
-          style: {
-            ...(node.style ?? {}),
-            width: targetWidth,
-            height: targetHeight
-          }
-        }));
-
-        return {
-          ...doc,
-          assets: {
-            ...doc.assets,
-            ...importedAssetMap
-          },
-          nodes: [...nextNodes, ...normalizedImageNodes]
-        };
-      },
+        })
+      }),
       undo: (doc) => {
         const nextAssets = { ...doc.assets };
-        for (const assetId of imageAssetIds) {
-          delete nextAssets[assetId];
-        }
+        delete nextAssets[imported.id];
 
         return {
           ...doc,
           assets: nextAssets,
-          nodes: doc.nodes.filter((node) => !imageNodes.some((imageNode) => imageNode.id === node.id))
+          nodes: doc.nodes.map((node) => {
+            if (node.id !== nodeId || !isImageNode(node)) return node;
+            return {
+              ...node,
+              data: {
+                ...node.data,
+                assetId: previousAssetId
+              }
+            };
+          })
         };
       }
     });

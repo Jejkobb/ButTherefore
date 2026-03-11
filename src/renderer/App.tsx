@@ -46,6 +46,11 @@ function isTypingTarget(target: EventTarget | null): boolean {
   return target.isContentEditable || tag === "input" || tag === "textarea" || tag === "select";
 }
 
+function isDrawingComposerOpen(): boolean {
+  if (typeof document === "undefined") return false;
+  return document.querySelector(".drawing-composer") !== null;
+}
+
 function eventToClientPosition(event: MouseEvent | TouchEvent): { x: number; y: number } {
   if ("touches" in event && event.touches.length > 0) {
     return { x: event.touches[0].clientX, y: event.touches[0].clientY };
@@ -502,6 +507,8 @@ function Editor() {
   useEffect(() => {
     // Global shortcuts: N, Delete, Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z, Ctrl/Cmd+S, Ctrl/Cmd+O.
     const onKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+
       if (event.key === "Escape") {
         if (showCreatePalette) {
           closeCreatePalette();
@@ -513,20 +520,26 @@ function Editor() {
 
       const targetTyping = isTypingTarget(event.target);
       const modKey = event.metaKey || event.ctrlKey;
+      const key = event.key.toLowerCase();
+      const drawingComposerOpen = isDrawingComposerOpen();
 
-      if (modKey && event.key.toLowerCase() === "s") {
+      if (modKey && key === "s") {
         event.preventDefault();
         void saveProject();
         return;
       }
 
-      if (modKey && event.key.toLowerCase() === "o") {
+      if (modKey && key === "o") {
         event.preventDefault();
         void openProject();
         return;
       }
 
-      if (modKey && event.key.toLowerCase() === "z") {
+      if (drawingComposerOpen && modKey && (key === "z" || key === "y")) {
+        return;
+      }
+
+      if (modKey && key === "z") {
         event.preventDefault();
         if (event.shiftKey) {
           redo();
@@ -538,7 +551,7 @@ function Editor() {
 
       if (targetTyping) return;
 
-      if (!modKey && event.shiftKey && event.key.toLowerCase() === "a") {
+      if (!modKey && event.shiftKey && key === "a") {
         event.preventDefault();
         openCreatePalette();
         return;
@@ -550,7 +563,7 @@ function Editor() {
         return;
       }
 
-      if (!modKey && event.key.toLowerCase() === "n") {
+      if (!modKey && key === "n") {
         event.preventDefault();
         createNodeAtViewportCenter();
         return;

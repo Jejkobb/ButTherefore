@@ -80,6 +80,16 @@ function detectMimeType(fileName: string): string {
   return "application/octet-stream";
 }
 
+function extensionFromMimeType(mimeType: string): string {
+  const normalized = mimeType.toLowerCase();
+  if (normalized === "image/png") return ".png";
+  if (normalized === "image/jpeg") return ".jpg";
+  if (normalized === "image/webp") return ".webp";
+  if (normalized === "image/gif") return ".gif";
+  if (normalized === "image/bmp") return ".bmp";
+  return ".bin";
+}
+
 function sanitizeProjectName(value: string): string {
   const trimmed = value.trim();
   if (!trimmed) return DEFAULT_PROJECT_NAME;
@@ -543,6 +553,38 @@ export function createWebStoryBridge(): StoryBridge {
       return {
         id: assetId,
         fileName: file.name,
+        relativePath,
+        mimeType,
+        absolutePath: `web://assets/${relativePath}`,
+        uri
+      } satisfies RuntimeStoryAsset;
+    },
+
+    importDataAsset: async (dataUrl: string, fileName: string) => {
+      const blob = dataUrlToBlob(dataUrl);
+      if (!blob) {
+        throw new Error("Drawing data is invalid.");
+      }
+
+      const normalizedName = fileName.trim().length > 0 ? fileName.trim() : `drawing-${Date.now()}.png`;
+      const assetId = randomId();
+      const mimeType = blob.type || detectMimeType(normalizedName);
+      const ext = fileExtension(normalizedName) || extensionFromMimeType(mimeType);
+      const relativePath = `${assetId}${ext}`;
+      const runtimeBlob = blob.type ? blob : blob.slice(0, blob.size, mimeType);
+
+      const previousUri = assetUrisById.get(assetId);
+      if (previousUri) {
+        URL.revokeObjectURL(previousUri);
+      }
+
+      const uri = URL.createObjectURL(runtimeBlob);
+      assetBlobsById.set(assetId, runtimeBlob);
+      assetUrisById.set(assetId, uri);
+
+      return {
+        id: assetId,
+        fileName: normalizedName,
         relativePath,
         mimeType,
         absolutePath: `web://assets/${relativePath}`,

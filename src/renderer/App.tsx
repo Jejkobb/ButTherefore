@@ -847,6 +847,7 @@ export default function App() {
   const newProject = useGraphStore((state) => state.newProject);
   const openProject = useGraphStore((state) => state.openProject);
   const openProjectAtPath = useGraphStore((state) => state.openProjectAtPath);
+  const launchPathAttemptRef = useRef<string | null>(null);
   const [showStartup, setShowStartup] = useState(true);
   const [startupData, setStartupData] = useState<StartupData | null>(null);
   const [startupLoading, setStartupLoading] = useState(true);
@@ -901,6 +902,25 @@ export default function App() {
     },
     [startupBusy]
   );
+
+  useEffect(() => {
+    if (!showStartup) return;
+    const launchProjectPath = startupData?.launchProjectPath;
+    if (!launchProjectPath || launchPathAttemptRef.current === launchProjectPath) return;
+
+    launchPathAttemptRef.current = launchProjectPath;
+
+    void withStartupBusy(async () => {
+      const opened = await openProjectAtPath(launchProjectPath);
+      if (opened) {
+        setShowStartup(false);
+        return;
+      }
+
+      setStartupError(`Could not open ${launchProjectPath}.`);
+      await loadStartupData();
+    });
+  }, [loadStartupData, openProjectAtPath, showStartup, startupData?.launchProjectPath, withStartupBusy]);
 
   const handleNewProject = useCallback(() => {
     void withStartupBusy(async () => {

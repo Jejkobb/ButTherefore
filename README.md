@@ -56,10 +56,10 @@ If a download link returns `404`, a release has not been published yet.
 - `Esc`: Close open menu/palette.
 
 ## Project Files
-- Main project file: `*.storybeat.json`
+- Main project file: `*.buttherefore`
 - Assets folder: sibling directory named `<project-name>.assets/`
 - Images are stored as files in the assets folder and referenced by relative path in JSON.
-- Autosave file is stored in app data as `autosave/autosave.storybeat.json`.
+- Autosave file is stored in app data as `autosave/autosave.buttherefore`.
 
 ## Run From Source (Developers)
 ```bash

@@ -14,7 +14,9 @@ import type {
 } from "../src/shared/ipc";
 
 const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
-const PROJECT_EXTENSION = ".storybeat.json";
+const PROJECT_EXTENSION = ".buttherefore";
+const LEGACY_PROJECT_EXTENSION = ".storybeat.json";
+const PROJECT_FILE_EXTENSION = PROJECT_EXTENSION.slice(1);
 const AUTOSAVE_ROOT = "autosave";
 const SESSION_ASSETS_ROOT = "session-assets";
 const ASSET_SCHEME = "story-asset";
@@ -29,6 +31,7 @@ let currentProjectPath: string | null = null;
 let workspaceAssetsDir = "";
 const assetPathIndex = new Map<string, string>();
 let recentProjects: RecentProjectEntry[] = [];
+let launchProjectPath: string | null = null;
 let updateState: UpdateState = {
   status: app.isPackaged ? "idle" : "unsupported",
   currentVersion: app.getVersion(),
@@ -53,16 +56,53 @@ protocol.registerSchemesAsPrivileged([
   }
 ]);
 
+function hasProjectFileExtension(filePath: string): boolean {
+  const normalized = filePath.toLowerCase();
+  return normalized.endsWith(PROJECT_EXTENSION) || normalized.endsWith(LEGACY_PROJECT_EXTENSION);
+}
+
+function stripProjectFileExtension(filePath: string): string {
+  const normalized = filePath.toLowerCase();
+  if (normalized.endsWith(PROJECT_EXTENSION)) {
+    return filePath.slice(0, -PROJECT_EXTENSION.length);
+  }
+  if (normalized.endsWith(LEGACY_PROJECT_EXTENSION)) {
+    return filePath.slice(0, -LEGACY_PROJECT_EXTENSION.length);
+  }
+  if (normalized.endsWith(".json")) {
+    return filePath.slice(0, -5);
+  }
+  return filePath;
+}
+
+function launchProjectPathFromArgv(argv: string[]): string | null {
+  for (const candidate of argv.slice(1)) {
+    const trimmed = candidate.trim();
+    if (!trimmed || trimmed.startsWith("-")) continue;
+
+    const resolved = path.resolve(trimmed);
+    if (hasProjectFileExtension(resolved)) {
+      return resolved;
+    }
+  }
+
+  return null;
+}
+
 function ensureProjectExtension(filePath: string): string {
-  if (filePath.endsWith(PROJECT_EXTENSION)) return filePath;
-  if (filePath.toLowerCase().endsWith(".json")) {
+  const normalized = filePath.toLowerCase();
+  if (normalized.endsWith(PROJECT_EXTENSION)) return filePath;
+  if (normalized.endsWith(LEGACY_PROJECT_EXTENSION)) {
+    return `${filePath.slice(0, -LEGACY_PROJECT_EXTENSION.length)}${PROJECT_EXTENSION}`;
+  }
+  if (normalized.endsWith(".json")) {
     return `${filePath.slice(0, -5)}${PROJECT_EXTENSION}`;
   }
   return `${filePath}${PROJECT_EXTENSION}`;
 }
 
 function projectAssetsDir(projectPath: string): string {
-  const base = path.basename(projectPath, PROJECT_EXTENSION);
+  const base = path.basename(stripProjectFileExtension(projectPath));
   return path.join(path.dirname(projectPath), `${base}.assets`);
 }
 
@@ -546,8 +586,11 @@ function registerIpc(): void {
 
   ipcMain.handle("project:open", async (): Promise<ProjectLoadResult | null> => {
     const selected = await dialog.showOpenDialog({
-      title: "Open Story Project",
-      filters: [{ name: "Story Projects", extensions: ["json"] }],
+      title: "Open ButTherefore Project",
+      filters: [
+        { name: "ButTherefore Projects", extensions: [PROJECT_FILE_EXTENSION] },
+        { name: "Legacy Story Projects", extensions: ["json"] }
+      ],
       properties: ["openFile"]
     });
 
@@ -571,9 +614,9 @@ function registerIpc(): void {
     const targetPath = projectPath ?? currentProjectPath;
     if (!targetPath) {
       const selected = await dialog.showSaveDialog({
-        title: "Save Story Project",
+        title: "Save ButTherefore Project",
         defaultPath: path.join(app.getPath("documents"), `story-project${PROJECT_EXTENSION}`),
-        filters: [{ name: "Story Projects", extensions: ["json"] }]
+        filters: [{ name: "ButTherefore Projects", extensions: [PROJECT_FILE_EXTENSION] }]
       });
 
       if (selected.canceled || !selected.filePath) {
@@ -588,9 +631,9 @@ function registerIpc(): void {
 
   ipcMain.handle("project:saveAs", async (_event, project: StoryProjectFile): Promise<ProjectSaveResult | null> => {
     const selected = await dialog.showSaveDialog({
-      title: "Save Story Project As",
+      title: "Save ButTherefore Project As",
       defaultPath: path.join(app.getPath("documents"), `story-project${PROJECT_EXTENSION}`),
-      filters: [{ name: "Story Projects", extensions: ["json"] }]
+      filters: [{ name: "ButTherefore Projects", extensions: [PROJECT_FILE_EXTENSION] }]
     });
 
     if (selected.canceled || !selected.filePath) {
@@ -614,13 +657,17 @@ function registerIpc(): void {
       }
     };
 
-    await fs.writeFile(path.join(root, "autosave.storybeat.json"), JSON.stringify(autosaveProject, null, 2), "utf-8");
+    await fs.writeFile(path.join(root, `autosave${PROJECT_EXTENSION}`), JSON.stringify(autosaveProject, null, 2), "utf-8");
   });
 
   ipcMain.handle("app:getStartupData", async (): Promise<StartupData> => {
+    const pendingLaunchProjectPath = launchProjectPath;
+    launchProjectPath = null;
+
     return {
       appName: "ButTherefore",
       version: app.getVersion(),
+      launchProjectPath: pendingLaunchProjectPath,
       recentProjects: await existingRecentProjects(),
       update: currentUpdateState()
     };
@@ -634,6 +681,8 @@ function registerIpc(): void {
     return installDownloadedUpdate();
   });
 }
+
+launchProjectPath = launchProjectPathFromArgv(process.argv);
 
 app.whenReady().then(async () => {
   if (process.platform === "win32") {

@@ -36,6 +36,7 @@ export interface UpdateState {
 export interface StartupData {
   appName: string;
   version: string;
+  launchProjectPath: string | null;
   recentProjects: RecentProjectEntry[];
   update: UpdateState;
 }

@@ -73,6 +73,15 @@
       "uninstallerIcon": "icons/icon.ico",
       "installerHeaderIcon": "icons/icon.ico"
     },
+    "fileAssociations": [
+      {
+        "ext": "buttherefore",
+        "name": "ButTherefore Project",
+        "description": "ButTherefore project file",
+        "role": "Editor",
+        "icon": "icons/icon.ico"
+      }
+    ],
     "publish": [
       {
         "provider": "github",

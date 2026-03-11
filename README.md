@@ -6,6 +6,8 @@ Inspired by the writing advice from Matt Stone and Trey Parker, the app is built
 
 Watch the reference clip: [South Park creators' story advice (YouTube)](https://www.youtube.com/watch?v=vGUNqq3jVLg)
 
+Try the web demo: [https://jejkobb.github.io/ButTherefore/](https://jejkobb.github.io/ButTherefore/)
+
 ![ButTherefore app screenshot](./screenshot.PNG)
 
 ## What The App Does

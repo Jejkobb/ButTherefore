@@ -66,6 +66,14 @@ function isElectronRuntime(): boolean {
   return typeof navigator !== "undefined" && /electron/i.test(navigator.userAgent);
 }
 
+function readCoarsePointerPreference(): boolean {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+    return false;
+  }
+
+  return window.matchMedia("(pointer: coarse)").matches || window.matchMedia("(hover: none)").matches;
+}
+
 type MenuId = "file" | "edit" | "insert";
 
 interface CreateOption {
@@ -239,6 +247,7 @@ function Editor() {
   const [createQuery, setCreateQuery] = useState("");
   const [projectNameDraft, setProjectNameDraft] = useState("");
   const [isEditingProjectName, setIsEditingProjectName] = useState(false);
+  const [isCoarsePointer, setIsCoarsePointer] = useState(readCoarsePointerPreference);
   const [recentProjects, setRecentProjects] = useState<RecentProjectEntry[]>([]);
   const [isLoadingRecentProjects, setIsLoadingRecentProjects] = useState(false);
   const supportsRecentProjects = useMemo(() => isElectronRuntime(), []);
@@ -388,6 +397,37 @@ function Editor() {
       includeHiddenNodes: true
     });
   }, [flow]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      return;
+    }
+
+    const pointerQuery = window.matchMedia("(pointer: coarse)");
+    const hoverQuery = window.matchMedia("(hover: none)");
+    const sync = () => {
+      setIsCoarsePointer(pointerQuery.matches || hoverQuery.matches);
+    };
+    const register = (query: MediaQueryList) => {
+      if (typeof query.addEventListener === "function") {
+        query.addEventListener("change", sync);
+        return () => query.removeEventListener("change", sync);
+      }
+
+      query.addListener(sync);
+      return () => query.removeListener(sync);
+    };
+
+    sync();
+
+    const unregisterPointer = register(pointerQuery);
+    const unregisterHover = register(hoverQuery);
+
+    return () => {
+      unregisterPointer();
+      unregisterHover();
+    };
+  }, []);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -820,9 +860,11 @@ function Editor() {
           onNodeDragStop={onNodeDragStop}
           connectionMode={ConnectionMode.Loose}
           connectionLineType={ConnectionLineType.Bezier}
-          panOnDrag={[1]}
-          selectionOnDrag
-          selectionMode={SelectionMode.Partial}
+          connectOnClick={isCoarsePointer}
+          connectionRadius={isCoarsePointer ? 38 : 20}
+          panOnDrag={isCoarsePointer ? true : [1]}
+          selectionOnDrag={!isCoarsePointer}
+          selectionMode={isCoarsePointer ? SelectionMode.Full : SelectionMode.Partial}
           deleteKeyCode={null}
           snapToGrid={false}
           minZoom={0.25}

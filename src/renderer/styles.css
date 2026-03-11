@@ -1204,3 +1204,23 @@ textarea {
   }
 
 }
+
+@media (pointer: coarse) {
+  .story-handle {
+    width: 34px !important;
+    height: 34px !important;
+  }
+
+  .story-handle::after {
+    width: 14px;
+    height: 14px;
+    border-width: 3px;
+  }
+
+  .story-node__resize-zone,
+  .postit-node__resize-zone,
+  .image-node__resize-zone {
+    width: 24px !important;
+    height: 24px !important;
+  }
+}

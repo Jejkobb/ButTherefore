@@ -17,6 +17,7 @@ Watch the reference clip: [South Park creators' story advice (YouTube)](https://
 - Undo/redo across creation, editing, movement, resize, connect, and delete actions.
 - Startup screen for new/open/recent projects and packaged-app update status.
 - Autosave plus standard Save/Save As project files.
+- Web demo mode (GitHub Pages): no startup screen, no recent files list, and browser-based Open/Save dialogs.
 
 ## Install (Windows)
 
@@ -73,6 +74,12 @@ Build production bundles:
 npm run build
 ```
 
+Build the GitHub Pages demo bundle:
+
+```bash
+npm run build:demo
+```
+
 Build Windows installer locally:
 
 ```bash
@@ -90,6 +97,9 @@ Optional flags:
 ```bash
 npm run release:win:auto -- -Bump minor
 npm run release:win:auto -- -Version 0.2.0
+npm run release:win:auto -- -Mac
+npm run release:win:auto -- -Linux
+npm run release:win:auto -- -Mac -Linux
 ```
 
 Create/update the portable ZIP:
@@ -97,6 +107,11 @@ Create/update the portable ZIP:
 ```bash
 tar -a -cf release/ButTherefore-Windows-Portable.zip -C release win-unpacked
 ```
+
+## GitHub Pages Demo Deployment
+The repository includes a workflow at `.github/workflows/deploy-pages.yml` that deploys the demo to GitHub Pages on pushes to `main` (and manual runs).
+
+In GitHub repository settings, make sure Pages is configured to use **GitHub Actions** as the source.
 
 ## Maintainer Release Note
 Upload both of these files to each GitHub Release:

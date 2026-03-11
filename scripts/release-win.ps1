@@ -2,6 +2,10 @@ param(
   [ValidateSet("patch", "minor", "major", "none")]
   [string]$Bump = "patch",
   [string]$Version = "",
+  [Alias("Mac")]
+  [switch]$BuildMac,
+  [Alias("Linux")]
+  [switch]$BuildLinux,
   [switch]$SkipCommit,
   [switch]$SkipPush,
   [switch]$KeepDraft
@@ -270,7 +274,25 @@ if (-not $SkipCommit) {
   Write-Host "==> SkipCommit is set; skipping push."
 }
 
-Invoke-CheckedCommand -FilePath "npm" -Arguments @("run", "release:win") -Description "Build and publish installer artifacts"
+Invoke-CheckedCommand -FilePath "npm" -Arguments @("run", "build") -Description "Build app bundles"
+
+$builderArgs = @("exec", "--", "electron-builder", "--win", "nsis")
+if ($BuildMac) {
+  $builderArgs += "--mac"
+}
+if ($BuildLinux) {
+  $builderArgs += "--linux"
+}
+$builderArgs += @("--publish", "always")
+
+$targetPlatforms = @("win")
+if ($BuildMac) {
+  $targetPlatforms += "mac"
+}
+if ($BuildLinux) {
+  $targetPlatforms += "linux"
+}
+Invoke-CheckedCommand -FilePath "npm" -Arguments $builderArgs -Description "Build and publish installer artifacts ($($targetPlatforms -join ', '))"
 
 $releaseDir = Join-Path $repoRoot "release"
 $winUnpackedDir = Join-Path $releaseDir "win-unpacked"

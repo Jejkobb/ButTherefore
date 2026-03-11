@@ -62,6 +62,10 @@ function isSameViewport(a: Viewport, b: Viewport): boolean {
   return a.x === b.x && a.y === b.y && a.zoom === b.zoom;
 }
 
+function isElectronRuntime(): boolean {
+  return typeof navigator !== "undefined" && /electron/i.test(navigator.userAgent);
+}
+
 type MenuId = "file" | "edit" | "insert";
 
 interface CreateOption {
@@ -237,6 +241,7 @@ function Editor() {
   const [isEditingProjectName, setIsEditingProjectName] = useState(false);
   const [recentProjects, setRecentProjects] = useState<RecentProjectEntry[]>([]);
   const [isLoadingRecentProjects, setIsLoadingRecentProjects] = useState(false);
+  const supportsRecentProjects = useMemo(() => isElectronRuntime(), []);
 
   const doc = useGraphStore((state) => state.doc);
   const history = useGraphStore((state) => state.history);
@@ -289,6 +294,11 @@ function Editor() {
   }, []);
 
   const loadRecentProjects = useCallback(async () => {
+    if (!supportsRecentProjects) {
+      setRecentProjects([]);
+      return;
+    }
+
     setIsLoadingRecentProjects(true);
     try {
       const startup = await window.storyBridge.getStartupData();
@@ -299,7 +309,7 @@ function Editor() {
     } finally {
       setIsLoadingRecentProjects(false);
     }
-  }, []);
+  }, [supportsRecentProjects]);
 
   const createNodeAtViewportCenter = useCallback(() => {
     const bounds = wrapperRef.current?.getBoundingClientRect();
@@ -571,7 +581,7 @@ function Editor() {
               onClick={() =>
                 setOpenMenu((current) => {
                   const next = current === "file" ? null : "file";
-                  if (next === "file") {
+                  if (next === "file" && supportsRecentProjects) {
                     void loadRecentProjects();
                   }
                   return next;
@@ -591,27 +601,31 @@ function Editor() {
                   <FolderOpen size={14} aria-hidden="true" />
                   <span>Open</span>
                 </button>
-                <div className="app-menu__section-title">Open Recent</div>
-                {isLoadingRecentProjects ? (
-                  <button type="button" disabled>
-                    <FolderOpen size={14} aria-hidden="true" />
-                    <span>Loading...</span>
-                  </button>
-                ) : null}
-                {!isLoadingRecentProjects && recentProjects.length === 0 ? (
-                  <button type="button" disabled>
-                    <FolderOpen size={14} aria-hidden="true" />
-                    <span>No recent projects</span>
-                  </button>
-                ) : null}
-                {!isLoadingRecentProjects
-                  ? recentProjects.slice(0, 6).map((entry) => (
-                      <button key={entry.path} onClick={() => runMenuAction(() => openProjectAtPath(entry.path))} type="button">
+                {supportsRecentProjects ? (
+                  <>
+                    <div className="app-menu__section-title">Open Recent</div>
+                    {isLoadingRecentProjects ? (
+                      <button type="button" disabled>
                         <FolderOpen size={14} aria-hidden="true" />
-                        <span>{entry.name}</span>
+                        <span>Loading...</span>
                       </button>
-                    ))
-                  : null}
+                    ) : null}
+                    {!isLoadingRecentProjects && recentProjects.length === 0 ? (
+                      <button type="button" disabled>
+                        <FolderOpen size={14} aria-hidden="true" />
+                        <span>No recent projects</span>
+                      </button>
+                    ) : null}
+                    {!isLoadingRecentProjects
+                      ? recentProjects.slice(0, 6).map((entry) => (
+                          <button key={entry.path} onClick={() => runMenuAction(() => openProjectAtPath(entry.path))} type="button">
+                            <FolderOpen size={14} aria-hidden="true" />
+                            <span>{entry.name}</span>
+                          </button>
+                        ))
+                      : null}
+                  </>
+                ) : null}
                 <button onClick={() => runMenuAction(saveProject)} type="button">
                   <Save size={14} aria-hidden="true" />
                   <span>Save</span>
@@ -847,8 +861,9 @@ export default function App() {
   const newProject = useGraphStore((state) => state.newProject);
   const openProject = useGraphStore((state) => state.openProject);
   const openProjectAtPath = useGraphStore((state) => state.openProjectAtPath);
+  const supportsStartupScreen = useMemo(() => isElectronRuntime(), []);
   const launchPathAttemptRef = useRef<string | null>(null);
-  const [showStartup, setShowStartup] = useState(true);
+  const [showStartup, setShowStartup] = useState(supportsStartupScreen);
   const [startupData, setStartupData] = useState<StartupData | null>(null);
   const [startupLoading, setStartupLoading] = useState(true);
   const [startupBusy, setStartupBusy] = useState(false);
@@ -869,8 +884,13 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (!supportsStartupScreen) {
+      setStartupLoading(false);
+      return;
+    }
+
     void loadStartupData();
-  }, [loadStartupData]);
+  }, [loadStartupData, supportsStartupScreen]);
 
   useEffect(() => {
     if (!showStartup) return;
@@ -998,7 +1018,7 @@ export default function App() {
   return (
     <ReactFlowProvider>
       <Editor />
-      {showStartup ? (
+      {supportsStartupScreen && showStartup ? (
         <StartupScreen
           data={startupData}
           loading={startupLoading}

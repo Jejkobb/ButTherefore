@@ -189,10 +189,7 @@ textarea {
   width: 90px;
   height: 90px;
   object-fit: contain;
-  border-radius: 16px;
-  background: color-mix(in srgb, var(--bg-1) 75%, #ffffff 25%);
-  border: 1px solid var(--startup-hero-line);
-  padding: 10px;
+  display: block;
 }
 
 .startup-hero__title-wrap {
